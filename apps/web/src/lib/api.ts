@@ -30,7 +30,13 @@ import type { Broadcast } from '@line-crm/shared'
 /** Broadcast type from API (now camelCase after worker serialization) */
 export type ApiBroadcast = Broadcast
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+const API_URL = process.env.NEXT_PUBLIC_API_URL
+if (!API_URL) {
+  throw new Error(
+    'NEXT_PUBLIC_API_URL is not set. Build cannot proceed without a valid API URL. ' +
+    'Set it in .env.production (local) or GitHub Secrets (CI).'
+  )
+}
 
 /**
  * Read the API key from localStorage (set during login).

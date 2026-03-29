@@ -166,6 +166,7 @@ export interface CreateBroadcastInput {
   targetType: 'all' | 'tag'
   targetTagId?: string
   scheduledAt?: string
+  altText?: string
 }
 
 export interface UpdateBroadcastInput {

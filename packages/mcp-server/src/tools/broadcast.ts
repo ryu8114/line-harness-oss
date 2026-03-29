@@ -138,6 +138,7 @@ export function registerBroadcast(server: McpServer): void {
             messageContent: trackedContent,
             targetType: "all",
             lineAccountId: accountId,
+            altText,
           });
 
           try {
@@ -180,6 +181,7 @@ export function registerBroadcast(server: McpServer): void {
           targetTagId,
           scheduledAt,
           lineAccountId: accountId,
+          altText,
         });
 
         const result = scheduledAt

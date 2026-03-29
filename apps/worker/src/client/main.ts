@@ -37,6 +37,12 @@ function detectLiffId(): string {
   return import.meta.env?.VITE_LIFF_ID || '';
 }
 const LIFF_ID = detectLiffId();
+if (!LIFF_ID && !new URLSearchParams(window.location.search).get('liffId')) {
+  throw new Error(
+    'VITE_LIFF_ID is not set and no liffId query param provided. ' +
+    'Set VITE_LIFF_ID in .env (local) or GitHub Secrets (CI).'
+  )
+}
 const UUID_STORAGE_KEY = 'lh_uuid';
 // LINE公式アカウントの友だち追加URL（LINE Developers Console → Messaging API → Bot basic ID）
 const BOT_BASIC_ID = import.meta.env?.VITE_BOT_BASIC_ID || '';

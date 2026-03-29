@@ -16,6 +16,7 @@ rsync -av --delete \
   --exclude='.env.local' \
   --exclude='.env' \
   --exclude='.claude' \
+  --exclude='.githooks' \
   --exclude='apps/web/out' \
   --exclude='apps/worker/dist' \
   --exclude='docs/superpowers' \

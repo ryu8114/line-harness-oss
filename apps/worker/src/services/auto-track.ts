@@ -1,5 +1,26 @@
 import { createTrackedLink } from '@line-crm/db';
 
+// Domains where Universal Links / App Links should be used
+const APP_LINK_DOMAINS = new Set([
+  'x.com',
+  'twitter.com',
+  'instagram.com',
+  'youtube.com',
+  'youtu.be',
+  'tiktok.com',
+  'facebook.com',
+  'github.com',
+]);
+
+function isAppLinkDomain(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    return APP_LINK_DOMAINS.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
 const URL_REGEX = /https?:\/\/[^\s"'<>\])}]+/g;
 
 // URLs that should NOT be wrapped (internal/system URLs)
@@ -69,17 +90,23 @@ function textToFlex(
     });
   }
 
-  const buttons = links.map((link) => ({
-    type: 'button',
-    action: {
-      type: 'uri',
-      label: `${link.label} を開く`,
-      uri: link.trackingUrl,
-    },
-    style: 'primary',
-    color: '#1a1a2e',
-    margin: 'sm',
-  }));
+  const buttons = links.map((link) => {
+    // Append openExternalBrowser=1 for app-link domains (opens Safari/Chrome instead of LINE browser)
+    const uri = isAppLinkDomain(link.originalUrl)
+      ? `${link.trackingUrl}${link.trackingUrl.includes('?') ? '&' : '?'}openExternalBrowser=1`
+      : link.trackingUrl;
+    return {
+      type: 'button',
+      action: {
+        type: 'uri',
+        label: `${link.label} を開く`,
+        uri,
+      },
+      style: 'primary',
+      color: '#1a1a2e',
+      margin: 'sm',
+    };
+  });
 
   const bubble = {
     type: 'bubble',
@@ -133,9 +160,13 @@ export async function autoTrackContent(
   }
 
   // Flex messages → replace URLs inline in the JSON
+  // For app-link domains, also inject openExternalBrowser=1 into the URI action
   let result = content;
-  for (const [original, { trackingUrl }] of urlMap) {
-    result = result.split(original).join(trackingUrl);
+  for (const [original, { trackingUrl, originalUrl }] of urlMap) {
+    const finalUrl = isAppLinkDomain(originalUrl)
+      ? `${trackingUrl}${trackingUrl.includes('?') ? '&' : '?'}openExternalBrowser=1`
+      : trackingUrl;
+    result = result.split(original).join(finalUrl);
   }
   return { messageType, content: result };
 }

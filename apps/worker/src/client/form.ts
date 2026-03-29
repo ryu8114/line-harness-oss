@@ -387,7 +387,7 @@ async function submitForm(): Promise<void> {
     const body: Record<string, unknown> = { data };
     if (state.profile?.userId) body.lineUserId = state.profile.userId;
     // Note: state.friendId is users.id (UUID), not friends.id — don't send as friendId
-    console.log('Submitting to:', `${API_URL}/api/forms/${state.formDef.id}/submit`);
+    console.log('Submitting to:', `/api/forms/${state.formDef.id}/submit`);
 
     const res = await apiCall(`/api/forms/${state.formDef.id}/submit`, {
       method: 'POST',

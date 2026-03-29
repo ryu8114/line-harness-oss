@@ -172,7 +172,7 @@ async function handleEvent(
       }
     }
 
-    // イベントバス発火: friend_add
+    // イベントバス発火: friend_add（replyToken は Step 0 で使用済みの可能性あり）
     await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name } }, lineAccessToken, lineAccountId);
     return;
   }
@@ -324,6 +324,7 @@ async function handleEvent(
       }>();
 
     let matched = false;
+    let replyTokenConsumed = false;
     for (const rule of autoReplies.results) {
       const isMatch =
         rule.match_type === 'exact'
@@ -336,6 +337,7 @@ async function handleEvent(
           const expandedContent = expandVariables(rule.response_content, friend as { id: string; display_name: string | null; user_id: string | null }, workerUrl);
           const replyMsg = buildMessage(rule.response_type, expandedContent);
           await lineClient.replyMessage(event.replyToken, [replyMsg]);
+          replyTokenConsumed = true;
 
           // 送信ログ（replyMessage = 無料）
           const outLogId = crypto.randomUUID();
@@ -348,6 +350,7 @@ async function handleEvent(
             .run();
         } catch (err) {
           console.error('Failed to send auto-reply', err);
+          // replyToken may still be unused if replyMessage threw before LINE accepted it
         }
 
         matched = true;
@@ -356,9 +359,11 @@ async function handleEvent(
     }
 
     // イベントバス発火: message_received
+    // Pass replyToken only when auto_reply didn't actually consume it
     await fireEvent(db, 'message_received', {
       friendId: friend.id,
       eventData: { text: incomingText, matched },
+      replyToken: replyTokenConsumed ? undefined : event.replyToken,
     }, lineAccessToken, lineAccountId);
 
     return;
