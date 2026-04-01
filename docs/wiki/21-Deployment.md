@@ -38,8 +38,8 @@ Node.js: **>= 20**
 
 ```bash
 # リポジトリクローン
-git clone https://github.com/your-org/line-harness.git
-cd line-harness
+git clone https://github.com/Shudesu/line-harness-oss.git
+cd line-harness-oss
 
 # 依存インストール
 pnpm install
@@ -58,17 +58,20 @@ pnpm dev:worker
 # => wrangler dev (http://localhost:8787)
 ```
 
-ローカルでは `.dev.vars` ファイルに環境変数を設定:
+ローカルでは `apps/worker/.dev.vars` ファイルに環境変数を設定:
 
 ```ini
 # apps/worker/.dev.vars
 LINE_CHANNEL_SECRET=your-channel-secret
 LINE_CHANNEL_ACCESS_TOKEN=your-channel-access-token
 API_KEY=dev-api-key
+WORKER_URL=http://localhost:8787
 LIFF_URL=https://liff.line.me/YOUR_LIFF_ID
 LINE_CHANNEL_ID=your-channel-id
 LINE_LOGIN_CHANNEL_ID=your-login-channel-id
 LINE_LOGIN_CHANNEL_SECRET=your-login-channel-secret
+VITE_LIFF_ID=your-liff-id
+VITE_BOT_BASIC_ID=@your-basic-id
 ```
 
 ### 管理パネル開発
@@ -98,15 +101,23 @@ pnpm deploy:worker
 ### wrangler.toml 設定
 
 ```toml
-name = "your-worker-name"
+name = "line-harness"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 workers_dev = true
+account_id = "YOUR_DEV_ACCOUNT_ID"
+
+[assets]
+not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "line-crm"
-database_id = "YOUR_D1_DATABASE_ID"
+database_name = "line-harness"
+database_id = "YOUR_DEV_D1_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "line-harness-images"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -129,6 +140,7 @@ wrangler secret put LINE_LOGIN_CHANNEL_SECRET
 wrangler secret put LIFF_URL
 
 # オプション
+wrangler secret put WORKER_URL
 wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
@@ -181,21 +193,53 @@ jobs:
 
 ## 管理パネル デプロイ (Cloudflare Pages)
 
-```bash
-# 1. ビルド
-pnpm deploy:web
-# => next build (apps/web/)
+管理画面は `output: 'export'` による静的エクスポートで Cloudflare Pages に配信。
 
-# 2. Cloudflare Pages にデプロイ
-# Dashboard から GitHub リポジトリを接続、または:
-wrangler pages deploy apps/web/.next --project-name=your-admin-name
+**Pages プロジェクト**: `line-harness-web`
+**本番 URL**: `https://line-harness-web.pages.dev`
+
+### 初回セットアップ
+
+```bash
+# Cloudflare Pages プロジェクト作成（初回のみ）
+npx wrangler pages project create line-harness-web --production-branch=main
 ```
 
-### Pages 設定
+### 手動デプロイ
 
-- ビルドコマンド: `pnpm install && pnpm -r build && pnpm --filter web build`
-- 出力ディレクトリ: `apps/web/.next`
-- Node.js バージョン: 22
+```bash
+# 1. shared パッケージをビルド
+pnpm --filter @line-crm/shared build
+
+# 2. 管理画面をビルド（NEXT_PUBLIC_API_URL が必須）
+NEXT_PUBLIC_API_URL=https://line-harness.YOUR_SUBDOMAIN.workers.dev \
+  pnpm --filter web build
+
+# 3. Cloudflare Pages にデプロイ
+npx wrangler pages deploy apps/web/out --project-name=line-harness-web
+```
+
+### GitHub Actions 自動デプロイ
+
+`.github/workflows/deploy-web.yml` に設定済み。
+
+**トリガー条件**: `main` ブランチへの push で、以下のパスに変更がある場合:
+- `apps/web/**`
+- `packages/shared/**`
+
+**必要な GitHub Secrets / Variables**:
+
+| 種別 | 名前 | 値 |
+|------|------|----|
+| Secret | `CLOUDFLARE_API_TOKEN` | Cloudflare API トークン（Worker と共用可） |
+| Secret | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare アカウント ID |
+| Variable | `NEXT_PUBLIC_API_URL` | Worker URL（例: `https://line-harness.xxx.workers.dev`） |
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN --repo OWNER/line-harness-oss
+gh secret set CLOUDFLARE_ACCOUNT_ID --repo OWNER/line-harness-oss --body "YOUR_ACCOUNT_ID"
+gh variable set NEXT_PUBLIC_API_URL --repo OWNER/line-harness-oss --body "https://line-harness.xxx.workers.dev"
+```
 
 ---
 
