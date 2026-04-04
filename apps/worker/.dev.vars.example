@@ -1,0 +1,10 @@
+LINE_CHANNEL_SECRET=your-channel-secret
+LINE_CHANNEL_ACCESS_TOKEN=your-channel-access-token
+API_KEY=dev-api-key
+WORKER_URL=http://localhost:8787
+LIFF_URL=https://liff.line.me/your-liff-id
+LINE_CHANNEL_ID=your-channel-id
+LINE_LOGIN_CHANNEL_ID=your-line-login-channel-id
+LINE_LOGIN_CHANNEL_SECRET=your-line-login-channel-secret
+VITE_LIFF_ID=your-liff-id
+VITE_BOT_BASIC_ID=@your-basic-id

@@ -132,13 +132,31 @@ pnpm install
 ### 3. D1 データベース作成
 
 ```bash
-npx wrangler d1 create line-crm
+npx wrangler d1 create line-harness
 # → 出力される database_id を apps/worker/wrangler.toml に記入
 
-npx wrangler d1 execute line-crm --file=packages/db/schema.sql
+npx wrangler d1 execute line-harness --config apps/worker/wrangler.toml --file=packages/db/schema.sql
 ```
 
-### 4. シークレット設定
+### 4. R2 バケット作成
+
+```bash
+npx wrangler r2 bucket create line-harness-images
+# → apps/worker/wrangler.toml の bucket_name と揃える
+```
+
+### 5. wrangler.toml 更新
+
+`apps/worker/wrangler.toml` のプレースホルダを実値に更新:
+
+```toml
+account_id = "YOUR_DEV_ACCOUNT_ID"
+database_id = "YOUR_DEV_D1_DATABASE_ID"
+database_name = "line-harness"
+bucket_name = "line-harness-images"
+```
+
+### 6. シークレット設定
 
 ```bash
 npx wrangler secret put LINE_CHANNEL_SECRET
@@ -148,21 +166,21 @@ npx wrangler secret put LINE_LOGIN_CHANNEL_ID
 npx wrangler secret put LINE_LOGIN_CHANNEL_SECRET
 ```
 
-### 5. デプロイ
+### 7. デプロイ
 
 ```bash
 pnpm deploy:worker
 # → https://your-worker.your-subdomain.workers.dev
 ```
 
-### 6. LINE Webhook 設定
+### 8. LINE Webhook 設定
 
 LINE Developers Console → Messaging API → Webhook URL:
 ```
 https://your-worker.your-subdomain.workers.dev/webhook
 ```
 
-### 7. 動作確認
+### 9. 動作確認
 
 ```bash
 # 友だち追加URL（これを LP や SNS に貼る）
@@ -258,6 +276,8 @@ pnpm dev:worker    # → http://localhost:8787
 pnpm dev:web       # → http://localhost:3001
 pnpm db:migrate:local
 ```
+
+ローカル Worker は `apps/worker/.dev.vars` を読むので、まず `apps/worker/.dev.vars.example` をコピーして値を入れてください。
 
 ---
 

@@ -5,18 +5,26 @@
 Workers のデプロイ設定ファイル。パス: `apps/worker/wrangler.toml`
 
 ```toml
-name = "your-worker-name"
+name = "line-harness"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 workers_dev = true
+account_id = "YOUR_DEV_ACCOUNT_ID"
+
+[assets]
+not_found_handling = "single-page-application"
 
 # シークレットは wrangler secret put で設定
 # ここにハードコードしない
 
 [[d1_databases]]
 binding = "DB"
-database_name = "line-crm"
-database_id = "YOUR_D1_DATABASE_ID"
+database_name = "line-harness"
+database_id = "YOUR_DEV_D1_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "line-harness-images"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -26,13 +34,16 @@ crons = ["*/5 * * * *"]
 
 | フィールド | 値 | 説明 |
 |-----------|-----|------|
-| `name` | `your-worker-name` | Workers の名前（デプロイ先URLに影響） |
+| `name` | `line-harness` | Workers の名前（デプロイ先URLに影響） |
 | `main` | `src/index.ts` | エントリーポイント |
 | `compatibility_date` | `2024-12-01` | Workers ランタイム互換日 |
 | `workers_dev` | `true` | `*.workers.dev` サブドメインを有効化 |
+| `account_id` | Cloudflare Account ID | デプロイ先アカウント |
+| `assets` | `single-page-application` | 非 API パスを SPA として配信 |
 | `binding` | `DB` | D1 バインディング名（コード内で `c.env.DB` としてアクセス） |
-| `database_name` | `line-crm` | D1 データベース名 |
+| `database_name` | `line-harness` | D1 データベース名 |
 | `database_id` | UUID | `wrangler d1 create` で取得した ID |
+| `IMAGES` | `line-harness-images` | 画像アップロード用 R2 バケット |
 | `crons` | `["*/5 * * * *"]` | 5分毎の Cron トリガー |
 
 ## 環境変数 / シークレット
@@ -72,6 +83,7 @@ npx wrangler secret list
 export type Env = {
   Bindings: {
     DB: D1Database;
+    IMAGES: R2Bucket;
     LINE_CHANNEL_SECRET: string;
     LINE_CHANNEL_ACCESS_TOKEN: string;
     API_KEY: string;
@@ -79,6 +91,8 @@ export type Env = {
     LINE_CHANNEL_ID: string;
     LINE_LOGIN_CHANNEL_ID: string;
     LINE_LOGIN_CHANNEL_SECRET: string;
+    WORKER_URL: string;
+    X_HARNESS_URL?: string;
   };
 };
 ```
@@ -99,7 +113,7 @@ Next.js 管理画面で必要な環境変数。Vercel / CF Pages のダッシュ
 
 ```bash
 # D1 作成
-npx wrangler d1 create line-crm
+npx wrangler d1 create line-harness
 
 # 出力される database_id を wrangler.toml に記入
 ```
@@ -108,11 +122,11 @@ npx wrangler d1 create line-crm
 
 ```bash
 # 本番
-npx wrangler d1 execute line-crm --file=packages/db/schema.sql
+npx wrangler d1 execute line-harness --config apps/worker/wrangler.toml --file=packages/db/schema.sql
 
 # ローカル開発
 pnpm db:migrate:local
-# = wrangler d1 execute line-crm --file=packages/db/schema.sql --local
+# = wrangler d1 execute line-harness --config apps/worker/wrangler.toml --file=packages/db/schema.sql --local
 ```
 
 ### D1 ダッシュボード確認

@@ -16,7 +16,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "line-harness"
-database_id = "YOUR_DEV_D1_DATABASE_ID"
+database_id = "42b8b97e-65e5-455a-b16a-fb1e61f50b6b"
 
 [[r2_buckets]]
 binding = "IMAGES"
