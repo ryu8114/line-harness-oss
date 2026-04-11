@@ -524,4 +524,95 @@ export const api = {
     regenerateKey: (id: string) =>
       fetchApi<ApiResponse<{ apiKey: string }>>(`/api/staff/${id}/regenerate-key`, { method: 'POST' }),
   },
+  booking: {
+    // メニュー管理
+    getMenus: (lineAccountId: string) =>
+      fetchApi<{ success: boolean; data: BookingMenu[] }>(`/api/booking/admin/menus?line_account_id=${encodeURIComponent(lineAccountId)}`),
+    createMenu: (data: { lineAccountId: string; name: string; duration: number; price?: number; description?: string; sortOrder?: number }) =>
+      fetchApi<{ success: boolean; data: { id: string } }>('/api/booking/admin/menus', { method: 'POST', body: JSON.stringify(data) }),
+    updateMenu: (id: string, data: Partial<{ name: string; duration: number; price: number | null; description: string | null; isActive: number; sortOrder: number }>) =>
+      fetchApi<{ success: boolean; data: BookingMenu }>(`/api/booking/admin/menus/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteMenu: (id: string) =>
+      fetchApi<{ success: boolean; data: null }>(`/api/booking/admin/menus/${id}`, { method: 'DELETE' }),
+    // 営業時間
+    getBusinessHours: (lineAccountId: string) =>
+      fetchApi<{ success: boolean; data: BusinessHour[] }>(`/api/booking/admin/business-hours?line_account_id=${encodeURIComponent(lineAccountId)}`),
+    updateBusinessHours: (lineAccountId: string, hours: BusinessHourInput[]) =>
+      fetchApi<{ success: boolean; data: null }>('/api/booking/admin/business-hours', { method: 'PUT', body: JSON.stringify({ lineAccountId, hours }) }),
+    // 例外日
+    getExceptions: (lineAccountId: string) =>
+      fetchApi<{ success: boolean; data: ScheduleException[] }>(`/api/booking/admin/schedule-exceptions?line_account_id=${encodeURIComponent(lineAccountId)}`),
+    createException: (data: { lineAccountId: string; date: string; type: 'closed' | 'partial'; openTime?: string; closeTime?: string; note?: string }) =>
+      fetchApi<{ success: boolean; data: { id: string } }>('/api/booking/admin/schedule-exceptions', { method: 'POST', body: JSON.stringify(data) }),
+    deleteException: (id: string) =>
+      fetchApi<{ success: boolean; data: null }>(`/api/booking/admin/schedule-exceptions/${id}`, { method: 'DELETE' }),
+    // 予約
+    getBookings: (lineAccountId: string, params?: { from?: string; to?: string; status?: string }) => {
+      const q = new URLSearchParams({ line_account_id: lineAccountId })
+      if (params?.from) q.set('from', params.from)
+      if (params?.to) q.set('to', params.to)
+      if (params?.status) q.set('status', params.status)
+      return fetchApi<{ success: boolean; data: Booking[] }>(`/api/booking/admin/bookings?${q}`)
+    },
+    getBooking: (id: string) =>
+      fetchApi<{ success: boolean; data: Booking }>(`/api/booking/admin/bookings/${id}`),
+    updateBookingStatus: (id: string, status: string) =>
+      fetchApi<{ success: boolean; data: null }>(`/api/booking/admin/bookings/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  },
+}
+
+// ---- 予約システム型定義 ----
+
+export type BookingMenu = {
+  id: string
+  name: string
+  duration: number
+  price: number | null
+  description: string | null
+  isActive: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type BusinessHour = {
+  id: string
+  dayOfWeek: number
+  openTime: string | null
+  closeTime: string | null
+  breakStart: string | null
+  breakEnd: string | null
+}
+
+export type BusinessHourInput = {
+  dayOfWeek: number
+  openTime: string | null
+  closeTime: string | null
+  breakStart?: string | null
+  breakEnd?: string | null
+}
+
+export type ScheduleException = {
+  id: string
+  date: string
+  type: 'closed' | 'partial'
+  openTime: string | null
+  closeTime: string | null
+  note: string | null
+  createdAt: string
+}
+
+export type Booking = {
+  id: string
+  startAt: string
+  endAt: string
+  status: string
+  menuName: string | null
+  menuDuration: number | null
+  menuPrice?: number | null
+  customerName: string | null
+  customerPhone: string | null
+  customerNote: string | null
+  googleEventId?: string | null
+  createdAt: string
 }

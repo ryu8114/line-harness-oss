@@ -579,4 +579,50 @@ CREATE TABLE IF NOT EXISTS staff_members (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_members_api_key ON staff_members(api_key);
+
+-- ============================================================
+-- Booking System (018): 整体院予約システム
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS menus (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  duration        INTEGER NOT NULL,
+  price           INTEGER,
+  description     TEXT,
+  is_active       INTEGER NOT NULL DEFAULT 1,
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_menus_account ON menus (line_account_id, is_active);
+
+CREATE TABLE IF NOT EXISTS business_hours (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL,
+  day_of_week     INTEGER NOT NULL,
+  open_time       TEXT,
+  close_time      TEXT,
+  break_start     TEXT,
+  break_end       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_business_hours_account ON business_hours (line_account_id, day_of_week);
+
+CREATE TABLE IF NOT EXISTS schedule_exceptions (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL,
+  date            TEXT NOT NULL,
+  type            TEXT NOT NULL CHECK (type IN ('closed', 'partial')),
+  open_time       TEXT,
+  close_time      TEXT,
+  note            TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_exceptions_account_date ON schedule_exceptions (line_account_id, date);
 CREATE INDEX IF NOT EXISTS idx_staff_members_role ON staff_members(role);

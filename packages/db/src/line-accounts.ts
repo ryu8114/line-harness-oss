@@ -14,6 +14,15 @@ export interface LineAccount {
   liff_id: string | null;
   is_active: number;
   token_expires_at: string | null;
+  // Booking system columns (018_booking_system)
+  admin_line_user_id: string | null;
+  liff_id_admin: string | null;
+  google_calendar_connection_id: string | null;
+  booking_enabled: number;
+  min_booking_hours: number;
+  max_booking_days: number;
+  slot_unit: number;
+  plan: string;
   created_at: string;
   updated_at: string;
 }

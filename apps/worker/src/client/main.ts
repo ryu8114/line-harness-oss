@@ -15,6 +15,7 @@
  */
 
 import { initBooking } from './booking.js';
+import { initAdminBooking } from './admin-booking.js';
 import { initForm } from './form.js';
 
 declare const liff: {
@@ -291,6 +292,8 @@ async function main() {
     const page = getPage();
     if (page === 'book') {
       await initBooking();
+    } else if (page === 'admin-booking') {
+      await initAdminBooking();
     } else if (page === 'form') {
       const params = new URLSearchParams(window.location.search);
       const formId = params.get('id');

@@ -41,6 +41,9 @@ import { images } from './routes/images.js';
 import { setup } from './routes/setup.js';
 import { autoReplies } from './routes/auto-replies.js';
 import { trafficPools } from './routes/traffic-pools.js';
+import { bookingPublic } from './routes/booking-public.js';
+import { bookingAdmin } from './routes/booking-admin.js';
+import { adminLiffApi } from './routes/admin-liff-api.js';
 
 export type Env = {
   Bindings: {
@@ -106,6 +109,9 @@ app.route('/', images);
 app.route('/', setup);
 app.route('/', autoReplies);
 app.route('/', trafficPools);
+app.route('/', bookingPublic);
+app.route('/', bookingAdmin);
+app.route('/', adminLiffApi);
 
 // Short link: /r/:ref → landing page with LINE open button
 app.get('/r/:ref', (c) => {

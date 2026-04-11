@@ -1,11 +1,13 @@
 /**
- * LIFF Booking Page — Calendar-based slot booking
+ * LIFF Booking Page — 整体院予約システム
  *
  * Flow:
- * 1. Show calendar date picker (current month)
- * 2. Tap date → fetch available slots from API
- * 3. Tap slot → show confirm section
- * 4. Submit booking → show confirmation
+ * 1. メニュー選択
+ * 2. カレンダーで日付選択
+ * 3. 時間帯選択
+ * 4. 顧客情報入力（名前・電話・症状メモ）
+ * 5. 確認画面
+ * 6. 予約完了
  */
 
 declare const liff: {
@@ -19,37 +21,67 @@ declare const liff: {
   closeWindow(): void;
 };
 
-const CONNECTION_ID = import.meta.env?.VITE_CALENDAR_CONNECTION_ID || '';
+// LINE_ACCOUNT_ID は LIFF URLのクエリパラメータから取得
+function getLineAccountId(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('line_account_id') || import.meta.env?.VITE_LINE_ACCOUNT_ID || '';
+}
+
+interface Menu {
+  id: string;
+  name: string;
+  duration: number;
+  price: number | null;
+  description: string | null;
+}
 
 interface Slot {
-  startAt: string;
-  endAt: string;
+  time: string;
   available: boolean;
 }
 
+type Page = 'menu' | 'calendar' | 'slots' | 'form' | 'confirm' | 'complete' | 'error';
+
 interface BookingState {
+  page: Page;
+  menus: Menu[];
+  selectedMenu: Menu | null;
   currentYear: number;
-  currentMonth: number; // 0-indexed
+  currentMonth: number;
   selectedDate: string | null;
   slots: Slot[];
-  selectedSlot: Slot | null;
-  profile: { userId: string; displayName: string; pictureUrl?: string } | null;
-  friendId: string | null;
+  selectedTime: string | null;
+  profile: { userId: string; displayName: string } | null;
+  idToken: string | null;
+  // 顧客情報
+  customerName: string;
+  customerPhone: string;
+  customerNote: string;
   loading: boolean;
   submitting: boolean;
+  errorMessage: string;
 }
 
 const state: BookingState = {
+  page: 'menu',
+  menus: [],
+  selectedMenu: null,
   currentYear: new Date().getFullYear(),
   currentMonth: new Date().getMonth(),
   selectedDate: null,
   slots: [],
-  selectedSlot: null,
+  selectedTime: null,
   profile: null,
-  friendId: null,
+  idToken: null,
+  customerName: '',
+  customerPhone: '',
+  customerNote: '',
   loading: false,
   submitting: false,
+  errorMessage: '',
 };
+
+const LINE_ACCOUNT_ID = getLineAccountId();
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -60,16 +92,12 @@ function escapeHtml(str: string): string {
 function apiCall(path: string, options?: RequestInit): Promise<Response> {
   return fetch(path, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
   });
 }
 
-function formatTime(isoString: string): string {
-  const d = new Date(isoString);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+function formatTime(time: string): string {
+  return time;
 }
 
 function formatDateJa(dateStr: string): string {
@@ -82,7 +110,39 @@ function getApp(): HTMLElement {
   return document.getElementById('app')!;
 }
 
-// ========== Calendar Rendering ==========
+// ========== メニュー選択画面 ==========
+
+function renderMenuPage(): string {
+  if (state.loading) {
+    return `<div class="booking-page"><div class="loading-spinner"></div><p>読み込み中...</p></div>`;
+  }
+  if (state.menus.length === 0) {
+    return `<div class="booking-page"><div class="card"><p>メニューが登録されていません。</p></div></div>`;
+  }
+
+  const menuCards = state.menus.map((m) => `
+    <div class="menu-card" data-menu-id="${escapeHtml(m.id)}">
+      <div class="menu-name">${escapeHtml(m.name)}</div>
+      <div class="menu-meta">
+        <span class="menu-duration">${m.duration}分</span>
+        ${m.price != null ? `<span class="menu-price">¥${m.price.toLocaleString()}</span>` : ''}
+      </div>
+      ${m.description ? `<div class="menu-desc">${escapeHtml(m.description)}</div>` : ''}
+    </div>
+  `).join('');
+
+  return `
+    <div class="booking-page">
+      <div class="booking-header">
+        <h1>メニュー選択</h1>
+        <p>ご希望のメニューをお選びください</p>
+      </div>
+      <div class="menu-list">${menuCards}</div>
+    </div>
+  `;
+}
+
+// ========== カレンダー画面 ==========
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
@@ -92,29 +152,23 @@ function getFirstDayOfWeek(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
-function isToday(year: number, month: number, day: number): boolean {
-  const now = new Date();
-  return now.getFullYear() === year && now.getMonth() === month && now.getDate() === day;
-}
-
 function isPast(year: number, month: number, day: number): boolean {
   const now = new Date();
-  const target = new Date(year, month, day);
   now.setHours(0, 0, 0, 0);
-  return target < now;
+  return new Date(year, month, day) < now;
 }
 
 function dateToString(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function renderCalendar(): string {
+function renderCalendarPage(): string {
   const { currentYear, currentMonth, selectedDate } = state;
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDay = getFirstDayOfWeek(currentYear, currentMonth);
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  let html = `
+  let calHtml = `
     <div class="booking-calendar">
       <div class="calendar-header">
         <button class="cal-nav" data-action="prev-month">&lt;</button>
@@ -127,212 +181,200 @@ function renderCalendar(): string {
       <div class="cal-days">
   `;
 
-  // Empty cells before first day
-  for (let i = 0; i < firstDay; i++) {
-    html += '<span class="cal-day empty"></span>';
-  }
-
+  for (let i = 0; i < firstDay; i++) calHtml += '<span class="cal-day empty"></span>';
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = dateToString(currentYear, currentMonth, day);
     const past = isPast(currentYear, currentMonth, day);
-    const today = isToday(currentYear, currentMonth, day);
     const selected = selectedDate === dateStr;
-    const classes = [
-      'cal-day',
-      past ? 'past' : 'active',
-      today ? 'today' : '',
-      selected ? 'selected' : '',
-      new Date(currentYear, currentMonth, day).getDay() === 0 ? 'sun' : '',
-      new Date(currentYear, currentMonth, day).getDay() === 6 ? 'sat' : '',
-    ].filter(Boolean).join(' ');
-
-    html += `<span class="${classes}" ${past ? '' : `data-date="${dateStr}"`}>${day}</span>`;
+    const dow = new Date(currentYear, currentMonth, day).getDay();
+    const classes = ['cal-day', past ? 'past' : 'active', selected ? 'selected' : '', dow === 0 ? 'sun' : '', dow === 6 ? 'sat' : ''].filter(Boolean).join(' ');
+    calHtml += `<span class="${classes}" ${past ? '' : `data-date="${dateStr}"`}>${day}</span>`;
   }
+  calHtml += '</div></div>';
 
-  html += '</div></div>';
-  return html;
+  return `
+    <div class="booking-page">
+      <div class="booking-header">
+        <button class="back-btn" data-action="back-to-menu">&lt; メニュー選択に戻る</button>
+        <h2>${escapeHtml(state.selectedMenu?.name ?? '')}</h2>
+        <p>ご希望の日付をお選びください</p>
+      </div>
+      ${calHtml}
+      ${state.selectedDate ? renderSlotsSection() : ''}
+    </div>
+  `;
 }
 
-// ========== Slots Rendering ==========
-
-function renderSlots(): string {
-  const { slots, selectedDate, selectedSlot, loading } = state;
-
-  if (!selectedDate) return '';
-
-  if (loading) {
-    return `
-      <div class="slots-section">
-        <h3>${formatDateJa(selectedDate)}</h3>
-        <div class="slots-loading">
-          <div class="loading-spinner"></div>
-          <p>空き状況を確認中...</p>
-        </div>
-      </div>
-    `;
+function renderSlotsSection(): string {
+  if (state.loading) {
+    return `<div class="slots-section"><div class="loading-spinner"></div><p>空き状況を確認中...</p></div>`;
+  }
+  if (state.slots.length === 0) {
+    return `<div class="slots-section"><h3>${formatDateJa(state.selectedDate!)}</h3><p class="no-slots">この日は予約枠がありません</p></div>`;
   }
 
-  if (slots.length === 0) {
-    return `
-      <div class="slots-section">
-        <h3>${formatDateJa(selectedDate)}</h3>
-        <p class="no-slots">この日は予約枠がありません</p>
-      </div>
-    `;
-  }
-
-  const slotButtons = slots.map((slot) => {
-    const isSelected = selectedSlot?.startAt === slot.startAt;
-    const cls = slot.available
-      ? (isSelected ? 'slot-btn selected' : 'slot-btn available')
-      : 'slot-btn full';
-    return `<button class="${cls}" ${slot.available ? `data-start="${slot.startAt}" data-end="${slot.endAt}"` : 'disabled'}>${formatTime(slot.startAt)} - ${formatTime(slot.endAt)}</button>`;
+  const buttons = state.slots.map((slot) => {
+    const isSelected = state.selectedTime === slot.time;
+    const cls = slot.available ? (isSelected ? 'slot-btn selected' : 'slot-btn available') : 'slot-btn full';
+    return `<button class="${cls}" ${slot.available ? `data-time="${slot.time}"` : 'disabled'}>${formatTime(slot.time)}</button>`;
   }).join('');
 
   return `
     <div class="slots-section">
-      <h3>${formatDateJa(selectedDate)}</h3>
-      <div class="slots-grid">${slotButtons}</div>
+      <h3>${formatDateJa(state.selectedDate!)}</h3>
+      <div class="slots-grid">${buttons}</div>
+      ${state.selectedTime ? `<button class="next-btn" data-action="go-to-form">次へ（顧客情報入力）</button>` : ''}
     </div>
   `;
 }
 
-// ========== Confirm Section ==========
+// ========== 顧客情報入力画面 ==========
 
-function renderConfirm(): string {
-  const { selectedSlot, selectedDate, profile } = state;
-  if (!selectedSlot || !selectedDate) return '';
-
+function renderFormPage(): string {
   return `
-    <div class="confirm-section">
-      <div class="confirm-card">
-        <h3>予約内容の確認</h3>
-        <div class="confirm-details">
-          <div class="confirm-row">
-            <span class="confirm-label">日付</span>
-            <span class="confirm-value">${formatDateJa(selectedDate)}</span>
-          </div>
-          <div class="confirm-row">
-            <span class="confirm-label">時間</span>
-            <span class="confirm-value">${formatTime(selectedSlot.startAt)} - ${formatTime(selectedSlot.endAt)}</span>
-          </div>
-          <div class="confirm-row">
-            <span class="confirm-label">お名前</span>
-            <span class="confirm-value">${profile ? escapeHtml(profile.displayName) : '---'}</span>
-          </div>
-        </div>
-        <button class="book-btn" data-action="confirm-booking">予約を確定する</button>
-      </div>
-    </div>
-  `;
-}
-
-// ========== Main Render ==========
-
-function render(): void {
-  const app = getApp();
-  app.innerHTML = `
     <div class="booking-page">
       <div class="booking-header">
-        <h1>予約</h1>
-        <p>ご希望の日時をお選びください</p>
+        <button class="back-btn" data-action="back-to-calendar">&lt; 日時選択に戻る</button>
+        <h2>お客様情報の入力</h2>
       </div>
-      ${renderCalendar()}
-      ${renderSlots()}
-      ${renderConfirm()}
+      <div class="form-section">
+        <div class="form-summary">
+          <p>${escapeHtml(state.selectedMenu?.name ?? '')} / ${state.selectedMenu?.duration}分</p>
+          <p>${formatDateJa(state.selectedDate!)} ${state.selectedTime}</p>
+        </div>
+        <div class="form-group">
+          <label for="customer-name">お名前 <span class="required">*</span></label>
+          <input type="text" id="customer-name" placeholder="田中 太郎" value="${escapeHtml(state.customerName)}" />
+        </div>
+        <div class="form-group">
+          <label for="customer-phone">電話番号</label>
+          <input type="tel" id="customer-phone" placeholder="090-0000-0000" value="${escapeHtml(state.customerPhone)}" />
+        </div>
+        <div class="form-group">
+          <label for="customer-note">症状・お悩み（任意）</label>
+          <textarea id="customer-note" placeholder="腰痛がひどい、肩こりがひどい など" rows="3">${escapeHtml(state.customerNote)}</textarea>
+        </div>
+        <button class="next-btn" data-action="go-to-confirm">確認画面へ</button>
+      </div>
     </div>
   `;
-  attachEvents();
 }
 
-function renderSuccess(date: string, slot: Slot): void {
-  const app = getApp();
-  app.innerHTML = `
+// ========== 確認画面 ==========
+
+function renderConfirmPage(): string {
+  const menu = state.selectedMenu!;
+  return `
+    <div class="booking-page">
+      <div class="booking-header">
+        <button class="back-btn" data-action="back-to-form">&lt; 入力に戻る</button>
+        <h2>予約内容の確認</h2>
+      </div>
+      <div class="confirm-card">
+        <div class="confirm-row"><span class="confirm-label">メニュー</span><span class="confirm-value">${escapeHtml(menu.name)}</span></div>
+        <div class="confirm-row"><span class="confirm-label">時間</span><span class="confirm-value">${menu.duration}分</span></div>
+        ${menu.price != null ? `<div class="confirm-row"><span class="confirm-label">料金</span><span class="confirm-value">¥${menu.price.toLocaleString()}</span></div>` : ''}
+        <div class="confirm-row"><span class="confirm-label">日付</span><span class="confirm-value">${formatDateJa(state.selectedDate!)}</span></div>
+        <div class="confirm-row"><span class="confirm-label">時間帯</span><span class="confirm-value">${state.selectedTime}</span></div>
+        <div class="confirm-row"><span class="confirm-label">お名前</span><span class="confirm-value">${escapeHtml(state.customerName)}</span></div>
+        ${state.customerPhone ? `<div class="confirm-row"><span class="confirm-label">電話番号</span><span class="confirm-value">${escapeHtml(state.customerPhone)}</span></div>` : ''}
+        ${state.customerNote ? `<div class="confirm-row"><span class="confirm-label">症状・お悩み</span><span class="confirm-value">${escapeHtml(state.customerNote)}</span></div>` : ''}
+        <button class="book-btn${state.submitting ? ' loading' : ''}" data-action="submit-booking" ${state.submitting ? 'disabled' : ''}>
+          ${state.submitting ? '送信中...' : '予約を確定する'}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// ========== 完了画面 ==========
+
+function renderCompletePage(): string {
+  return `
     <div class="booking-page">
       <div class="success-card">
         <div class="success-icon">✓</div>
         <h2>予約が完了しました</h2>
         <div class="confirm-details">
-          <div class="confirm-row">
-            <span class="confirm-label">日付</span>
-            <span class="confirm-value">${formatDateJa(date)}</span>
-          </div>
-          <div class="confirm-row">
-            <span class="confirm-label">時間</span>
-            <span class="confirm-value">${formatTime(slot.startAt)} - ${formatTime(slot.endAt)}</span>
-          </div>
+          <div class="confirm-row"><span class="confirm-label">メニュー</span><span class="confirm-value">${escapeHtml(state.selectedMenu?.name ?? '')}</span></div>
+          <div class="confirm-row"><span class="confirm-label">日時</span><span class="confirm-value">${formatDateJa(state.selectedDate!)} ${state.selectedTime}</span></div>
         </div>
-        <p class="success-message">ご予約ありがとうございます。<br>当日のお越しをお待ちしております。</p>
+        <p class="success-message">ご予約ありがとうございます。<br>LINEに確認メッセージをお送りしました。<br>当日のお越しをお待ちしております。</p>
         <button class="close-btn" data-action="close">閉じる</button>
       </div>
     </div>
   `;
-
-  const closeBtn = app.querySelector('[data-action="close"]');
-  closeBtn?.addEventListener('click', () => {
-    if (liff.isInClient()) {
-      liff.closeWindow();
-    } else {
-      window.close();
-    }
-  });
 }
 
-function renderError(message: string): void {
-  const app = getApp();
-  app.innerHTML = `
+function renderErrorPage(): string {
+  return `
     <div class="booking-page">
       <div class="card">
-        <h2 style="color: #e53e3e;">エラー</h2>
-        <p class="error">${escapeHtml(message)}</p>
-        <button class="close-btn" data-action="retry" style="margin-top:16px;">やり直す</button>
+        <h2 style="color:#e53e3e;">エラー</h2>
+        <p>${escapeHtml(state.errorMessage)}</p>
+        <button class="close-btn" data-action="retry">やり直す</button>
       </div>
     </div>
   `;
-  app.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
-    state.selectedDate = null;
-    state.selectedSlot = null;
-    state.slots = [];
-    render();
-  });
 }
 
-// ========== Event Handlers ==========
+// ========== メインレンダリング ==========
+
+function render(): void {
+  const app = getApp();
+  switch (state.page) {
+    case 'menu': app.innerHTML = renderMenuPage(); break;
+    case 'calendar': app.innerHTML = renderCalendarPage(); break;
+    case 'form': app.innerHTML = renderFormPage(); break;
+    case 'confirm': app.innerHTML = renderConfirmPage(); break;
+    case 'complete': app.innerHTML = renderCompletePage(); break;
+    case 'error': app.innerHTML = renderErrorPage(); break;
+  }
+  attachEvents();
+}
+
+// ========== イベントハンドラ ==========
 
 function attachEvents(): void {
   const app = getApp();
 
-  // Month navigation
-  app.querySelectorAll('.cal-nav').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const action = (btn as HTMLElement).dataset.action;
-      if (action === 'prev-month') {
-        state.currentMonth--;
-        if (state.currentMonth < 0) {
-          state.currentMonth = 11;
-          state.currentYear--;
-        }
-      } else {
-        state.currentMonth++;
-        if (state.currentMonth > 11) {
-          state.currentMonth = 0;
-          state.currentYear++;
-        }
+  // メニュー選択
+  app.querySelectorAll('.menu-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const menuId = (card as HTMLElement).dataset.menuId;
+      const menu = state.menus.find((m) => m.id === menuId);
+      if (menu) {
+        state.selectedMenu = menu;
+        state.selectedDate = null;
+        state.slots = [];
+        state.selectedTime = null;
+        state.page = 'calendar';
+        render();
       }
-      state.selectedDate = null;
-      state.selectedSlot = null;
-      state.slots = [];
-      render();
     });
   });
 
-  // Date selection
+  // カレンダーナビ
+  app.querySelector('[data-action="prev-month"]')?.addEventListener('click', () => {
+    state.currentMonth--;
+    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
+    state.selectedDate = null; state.slots = []; state.selectedTime = null;
+    render();
+  });
+  app.querySelector('[data-action="next-month"]')?.addEventListener('click', () => {
+    state.currentMonth++;
+    if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
+    state.selectedDate = null; state.slots = []; state.selectedTime = null;
+    render();
+  });
+
+  // 日付選択
   app.querySelectorAll('.cal-day.active').forEach((el) => {
     el.addEventListener('click', () => {
       const date = (el as HTMLElement).dataset.date;
       if (date) {
         state.selectedDate = date;
-        state.selectedSlot = null;
+        state.selectedTime = null;
         state.slots = [];
         state.loading = true;
         render();
@@ -341,40 +383,83 @@ function attachEvents(): void {
     });
   });
 
-  // Slot selection
+  // スロット選択
   app.querySelectorAll('.slot-btn.available').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const startAt = (btn as HTMLElement).dataset.start!;
-      const endAt = (btn as HTMLElement).dataset.end!;
-      state.selectedSlot = { startAt, endAt, available: true };
+      state.selectedTime = (btn as HTMLElement).dataset.time!;
       render();
-      // Scroll to confirm
-      setTimeout(() => {
-        const confirmEl = getApp().querySelector('.confirm-section');
-        confirmEl?.scrollIntoView({ behavior: 'smooth' });
-      }, 50);
     });
   });
 
-  // Confirm booking
-  const confirmBtn = app.querySelector('[data-action="confirm-booking"]');
-  confirmBtn?.addEventListener('click', () => submitBooking());
+  // 顧客情報入力へ
+  app.querySelector('[data-action="go-to-form"]')?.addEventListener('click', () => {
+    state.page = 'form';
+    render();
+  });
+
+  // 確認画面へ
+  app.querySelector('[data-action="go-to-confirm"]')?.addEventListener('click', () => {
+    const name = (document.getElementById('customer-name') as HTMLInputElement)?.value.trim();
+    if (!name) { alert('お名前を入力してください'); return; }
+    state.customerName = name;
+    state.customerPhone = (document.getElementById('customer-phone') as HTMLInputElement)?.value.trim() || '';
+    state.customerNote = (document.getElementById('customer-note') as HTMLTextAreaElement)?.value.trim() || '';
+    state.page = 'confirm';
+    render();
+  });
+
+  // 予約送信
+  app.querySelector('[data-action="submit-booking"]')?.addEventListener('click', () => submitBooking());
+
+  // 戻るボタン
+  app.querySelector('[data-action="back-to-menu"]')?.addEventListener('click', () => { state.page = 'menu'; render(); });
+  app.querySelector('[data-action="back-to-calendar"]')?.addEventListener('click', () => { state.page = 'calendar'; render(); });
+  app.querySelector('[data-action="back-to-form"]')?.addEventListener('click', () => { state.page = 'form'; render(); });
+
+  // 閉じる
+  app.querySelector('[data-action="close"]')?.addEventListener('click', () => {
+    if (liff.isInClient()) liff.closeWindow(); else window.close();
+  });
+
+  // やり直し
+  app.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
+    state.page = 'menu'; state.errorMessage = '';
+    state.selectedMenu = null; state.selectedDate = null; state.selectedTime = null;
+    render();
+  });
 }
 
-// ========== API Calls ==========
+// ========== API呼び出し ==========
+
+async function fetchMenus(): Promise<void> {
+  try {
+    const res = await apiCall(`/api/public/menus?line_account_id=${encodeURIComponent(LINE_ACCOUNT_ID)}`);
+    if (!res.ok) throw new Error('メニューの取得に失敗しました');
+    const json = await res.json() as { success: boolean; data: Menu[] };
+    state.menus = json.data;
+  } catch (err) {
+    console.error('fetchMenus error:', err);
+    state.menus = [];
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
 
 async function fetchSlots(date: string): Promise<void> {
   try {
-    const params = new URLSearchParams({ date });
-    if (CONNECTION_ID) params.set('connectionId', CONNECTION_ID);
-    const res = await apiCall(`/api/integrations/google-calendar/slots?${params}`);
-    if (!res.ok) throw new Error('スロット取得に失敗しました');
+    const params = new URLSearchParams({
+      line_account_id: LINE_ACCOUNT_ID,
+      menu_id: state.selectedMenu!.id,
+      date,
+    });
+    const res = await apiCall(`/api/public/slots?${params}`);
+    if (!res.ok) throw new Error('空き状況の取得に失敗しました');
     const json = await res.json() as { success: boolean; data: Slot[] };
-    if (!json.success) throw new Error('スロット取得に失敗しました');
     state.slots = json.data;
   } catch (err) {
-    state.slots = [];
     console.error('fetchSlots error:', err);
+    state.slots = [];
   } finally {
     state.loading = false;
     render();
@@ -382,79 +467,66 @@ async function fetchSlots(date: string): Promise<void> {
 }
 
 async function submitBooking(): Promise<void> {
-  const { selectedSlot, selectedDate, profile, friendId } = state;
-  if (!selectedSlot || !selectedDate || !profile || state.submitting) return;
+  if (state.submitting) return;
   state.submitting = true;
-
-  const confirmBtn = getApp().querySelector('[data-action="confirm-booking"]') as HTMLButtonElement | null;
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = '送信中...';
-  }
+  render();
 
   try {
-    const body: Record<string, unknown> = {
-      title: `${profile.displayName}様 予約`,
-      startAt: selectedSlot.startAt,
-      endAt: selectedSlot.endAt,
-    };
-    if (CONNECTION_ID) body.connectionId = CONNECTION_ID;
-    if (friendId) body.friendId = friendId;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (state.idToken) headers['X-LIFF-ID-Token'] = state.idToken;
 
-    const res = await apiCall('/api/integrations/google-calendar/book', {
+    const res = await fetch('/api/public/bookings', {
       method: 'POST',
-      body: JSON.stringify(body),
+      headers,
+      body: JSON.stringify({
+        lineAccountId: LINE_ACCOUNT_ID,
+        menuId: state.selectedMenu!.id,
+        date: state.selectedDate!,
+        time: state.selectedTime!,
+        customerName: state.customerName,
+        customerPhone: state.customerPhone || undefined,
+        customerNote: state.customerNote || undefined,
+      }),
     });
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => null) as { error?: string } | null;
-      throw new Error(errData?.error || '予約に失敗しました');
+    if (res.status === 409) {
+      state.submitting = false;
+      state.slots = [];
+      state.selectedTime = null;
+      state.page = 'calendar';
+      alert('この時間帯はすでに予約が入りました。別の時間を選択してください。');
+      render();
+      fetchSlots(state.selectedDate!);
+      return;
     }
 
-    renderSuccess(selectedDate, selectedSlot);
+    if (!res.ok) {
+      const err = await res.json().catch(() => null) as { error?: string } | null;
+      throw new Error(err?.error || '予約の送信に失敗しました');
+    }
+
+    state.page = 'complete';
+    render();
   } catch (err) {
     state.submitting = false;
-    renderError(err instanceof Error ? err.message : '予約に失敗しました');
+    state.errorMessage = err instanceof Error ? err.message : '予約に失敗しました';
+    state.page = 'error';
+    render();
   }
 }
 
-// ========== Init ==========
+// ========== 初期化 ==========
 
 export async function initBooking(): Promise<void> {
   const profile = await liff.getProfile();
-  state.profile = profile;
+  state.profile = { userId: profile.userId, displayName: profile.displayName };
+  state.idToken = liff.getIDToken();
 
-  // Try to get friendId from UUID linking
-  const UUID_STORAGE_KEY = 'lh_uuid';
-  try {
-    state.friendId = localStorage.getItem(UUID_STORAGE_KEY);
-  } catch {
-    // silent
-  }
+  // 氏名をLINEプロフィールから初期設定（書き換え可能）
+  if (profile.displayName) state.customerName = profile.displayName;
 
-  // Silent UUID linking (same as main flow)
-  const rawIdToken = liff.getIDToken();
-  if (rawIdToken) {
-    const existingUuid = state.friendId;
-    apiCall('/api/liff/link', {
-      method: 'POST',
-      body: JSON.stringify({
-        idToken: rawIdToken,
-        displayName: profile.displayName,
-        existingUuid: existingUuid,
-      }),
-    }).then(async (res) => {
-      if (res.ok) {
-        const data = await res.json() as { success: boolean; data?: { userId?: string } };
-        if (data?.data?.userId) {
-          try {
-            localStorage.setItem(UUID_STORAGE_KEY, data.data.userId);
-            state.friendId = data.data.userId;
-          } catch { /* silent */ }
-        }
-      }
-    }).catch(() => { /* silent */ });
-  }
-
+  // メニューを取得
+  state.loading = true;
   render();
+  await fetchMenus();
 }
