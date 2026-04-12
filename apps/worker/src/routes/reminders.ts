@@ -91,7 +91,7 @@ reminders.post('/api/reminders', async (c) => {
     const body = await c.req.json<{ name: string; description?: string; lineAccountId?: string | null }>();
     if (!body.name) return c.json({ success: false, error: 'name is required' }, 400);
     const staff = c.get('staff');
-    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
+    const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : (body.lineAccountId ?? null);
     const item = await createReminder(c.env.DB, body);
     // Save line_account_id
     if (resolvedAccountId) {

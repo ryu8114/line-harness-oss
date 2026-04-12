@@ -231,7 +231,7 @@ export default function Sidebar() {
               </div>
             )}
             {section.items.filter((item) => {
-              if (item.href === '/staff' && staffRole !== 'owner') return false
+              if (item.href === '/staff' && staffRole !== 'system_admin') return false
               if (item.href === '/accounts' && staffRole === 'staff') return false
               return true
             }).map((item) => {
@@ -265,11 +265,11 @@ export default function Sidebar() {
           <div className="px-3 py-2 text-xs text-gray-500 border-t border-gray-100">
             <div className="font-medium text-gray-700">{staffName}</div>
             <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mt-0.5 ${
-              staffRole === 'owner' ? 'bg-yellow-100 text-yellow-800' :
-              staffRole === 'admin' ? 'bg-blue-100 text-blue-800' :
+              staffRole === 'system_admin' ? 'bg-yellow-100 text-yellow-800' :
+              staffRole === 'clinic_admin' ? 'bg-blue-100 text-blue-800' :
               'bg-gray-100 text-gray-600'
             }`}>
-              {staffRole === 'owner' ? 'オーナー' : staffRole === 'admin' ? '管理者' : 'スタッフ'}
+              {staffRole === 'system_admin' ? 'オーナー' : staffRole === 'clinic_admin' ? '管理者' : 'スタッフ'}
             </span>
           </div>
         )}

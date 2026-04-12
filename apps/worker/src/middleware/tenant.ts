@@ -1,14 +1,14 @@
 import type { Context, Next } from 'hono';
 import type { Env } from '../index.js';
 
-type StaffContext = { id: string; name: string; role: 'owner' | 'admin' | 'staff'; lineAccountId: string | null };
+type StaffContext = { id: string; name: string; role: 'system_admin' | 'clinic_admin' | 'staff'; lineAccountId: string | null };
 
 /** query param の命名が route ごとに不統一なので1つのヘルパーで正規化する */
 export function resolveLineAccountId(c: Context<Env>): string | null {
   const staff = c.get('staff');
   if (!staff) return null;
   // admin/staff は常に自院のIDを使う（ユーザー入力を信用しない）
-  if (staff.role !== 'owner' && staff.lineAccountId) {
+  if (staff.role !== 'system_admin' && staff.lineAccountId) {
     return staff.lineAccountId;
   }
   // owner は query param から取得
@@ -26,7 +26,7 @@ export async function requireTenant(c: Context<Env>, next: Next): Promise<Respon
   const staff = c.get('staff');
   if (!staff) return next();
 
-  if (staff.role === 'owner') {
+  if (staff.role === 'system_admin') {
     c.set('resolvedLineAccountId', resolveLineAccountId(c));
     return next();
   }
@@ -51,7 +51,7 @@ export async function requireTenant(c: Context<Env>, next: Next): Promise<Respon
 
 /** 単体リソースの所有権チェック */
 export function checkOwnership(staff: StaffContext, recordLineAccountId: string | null): boolean {
-  if (staff.role === 'owner') return true;
+  if (staff.role === 'system_admin') return true;
   // legacy NULL レコードは scoped user からアクセス不可
   if (recordLineAccountId === null) return false;
   return staff.lineAccountId === recordLineAccountId;

@@ -53,7 +53,7 @@ lineAccounts.get('/api/line-accounts', async (c) => {
     const db = c.env.DB;
     const staff = c.get('staff');
     let items = await getLineAccounts(db);
-    if (staff && staff.role !== 'owner' && staff.lineAccountId) {
+    if (staff && staff.role !== 'system_admin' && staff.lineAccountId) {
       items = items.filter((a) => a.id === staff.lineAccountId);
     }
 
@@ -104,7 +104,7 @@ lineAccounts.get('/api/line-accounts/:id', async (c) => {
     }
     const staff = c.get('staff');
     // admin/staff は自院以外へのアクセスを拒否（チャンネルシークレット漏洩防止）
-    if (staff && staff.role !== 'owner' && staff.lineAccountId && account.id !== staff.lineAccountId) {
+    if (staff && staff.role !== 'system_admin' && staff.lineAccountId && account.id !== staff.lineAccountId) {
       return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
     const data = staff?.role === 'staff'
@@ -118,7 +118,7 @@ lineAccounts.get('/api/line-accounts/:id', async (c) => {
 });
 
 // POST /api/line-accounts - create
-lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
+lineAccounts.post('/api/line-accounts', requireRole('system_admin'), async (c) => {
   try {
     const body = await c.req.json<{
       channelId: string;
@@ -143,7 +143,7 @@ lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
 });
 
 // PUT /api/line-accounts/:id - update
-lineAccounts.put('/api/line-accounts/:id', requireRole('owner'), async (c) => {
+lineAccounts.put('/api/line-accounts/:id', requireRole('system_admin'), async (c) => {
   try {
     const id = c.req.param('id')!;
     const body = await c.req.json<{
@@ -171,7 +171,7 @@ lineAccounts.put('/api/line-accounts/:id', requireRole('owner'), async (c) => {
 });
 
 // DELETE /api/line-accounts/:id - delete
-lineAccounts.delete('/api/line-accounts/:id', requireRole('owner'), async (c) => {
+lineAccounts.delete('/api/line-accounts/:id', requireRole('system_admin'), async (c) => {
   try {
     await deleteLineAccount(c.env.DB, c.req.param('id')!);
     return c.json({ success: true, data: null });

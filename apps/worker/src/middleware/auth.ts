@@ -43,7 +43,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
 
   // Fallback: env API_KEY acts as owner
   if (token === c.env.API_KEY) {
-    c.set('staff', { id: 'env-owner', name: 'Owner', role: 'owner' as const, lineAccountId: null });
+    c.set('staff', { id: 'env-owner', name: 'Owner', role: 'system_admin' as const, lineAccountId: null });
     return next();
   }
 

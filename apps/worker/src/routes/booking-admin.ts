@@ -53,7 +53,7 @@ bookingAdmin.post('/api/booking/admin/menus', async (c) => {
   }
   const staff = c.get('staff');
   // admin/staff は body の lineAccountId を無視して自院IDを使う
-  const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : body.lineAccountId;
+  const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : body.lineAccountId;
   if (!resolvedAccountId) {
     return c.json({ success: false, error: 'lineAccountId is required' }, 400);
   }
@@ -123,7 +123,7 @@ bookingAdmin.put('/api/booking/admin/business-hours', async (c) => {
   }
   const staff = c.get('staff');
   // admin/staff は body の lineAccountId を無視して自院IDを使う
-  const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : body.lineAccountId;
+  const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : body.lineAccountId;
   if (!resolvedAccountId) {
     return c.json({ success: false, error: 'lineAccountId is required' }, 400);
   }
@@ -166,7 +166,7 @@ bookingAdmin.post('/api/booking/admin/schedule-exceptions', async (c) => {
     return c.json({ success: false, error: 'openTime and closeTime are required for partial exceptions' }, 400);
   }
   const staff = c.get('staff');
-  const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : body.lineAccountId;
+  const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : body.lineAccountId;
   if (!resolvedAccountId) {
     return c.json({ success: false, error: 'lineAccountId is required' }, 400);
   }

@@ -657,7 +657,7 @@ export interface StaffMember {
   id: string;
   name: string;
   email: string | null;
-  role: 'owner' | 'admin' | 'staff';
+  role: 'system_admin' | 'clinic_admin' | 'staff';
   apiKey: string;
   isActive: boolean;
   createdAt: string;
@@ -667,7 +667,7 @@ export interface StaffMember {
 export interface StaffProfile {
   id: string;
   name: string;
-  role: 'owner' | 'admin' | 'staff';
+  role: 'system_admin' | 'clinic_admin' | 'staff';
   email: string | null;
 }
 

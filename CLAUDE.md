@@ -26,11 +26,12 @@ LINE Harness OSSをベースに予約機能を拡張したもの。
   - admin/staff はアカウントセレクターが自院に固定される
   - 将来スケール時はメアド＋パスワードに移行予定
 
-- [ ] **`staff_members` テーブルのロール名見直し**
-  - 現状: `owner / admin / staff`
-  - 「院長」が `staff_members` テーブルに入るのは名称的に違和感がある
-  - 検討案: テーブル名を `accounts` に変更、またはロールに `clinic_owner` を追加
-  - 変更時は `role IN (...)` の CHECK 制約とすべての参照箇所を合わせて修正する
+- [x] **`staff_members` テーブルのロール名見直し** ✅ 実装済み
+  - 変更後: `system_admin / clinic_admin / staff`
+  - `system_admin` = システム全体管理者（旧 `owner`）
+  - `clinic_admin` = 院長（旧 `admin`）
+  - `staff` = スタッフ（変更なし）
+  - マイグレーション: `packages/db/migrations/022_rename_staff_roles.sql`
 
 ### 中優先度
 
@@ -66,7 +67,7 @@ VALUES ('新しいID', 'チャンネルID', '院名', 'アクセストークン'
 
 ```sql
 INSERT INTO staff_members (id, name, role, api_key, line_account_id)
-VALUES (lower(hex(randomblob(16))), '院長名', 'admin', 'lh_任意のキー', '上記の院ID');
+VALUES (lower(hex(randomblob(16))), '院長名', 'clinic_admin', 'lh_任意のキー', '上記の院ID');
 ```
 
 5. ログイン URL を院長に渡す: `https://line-harness-web-a61.pages.dev/login?key=lh_任意のキー`

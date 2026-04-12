@@ -44,7 +44,7 @@ staff.get('/api/staff/me', async (c) => {
         data: {
           id: 'env-owner',
           name: 'Owner',
-          role: 'owner',
+          role: 'system_admin',
           email: null,
           lineAccountId: null,
         },
@@ -73,7 +73,7 @@ staff.get('/api/staff/me', async (c) => {
 });
 
 // GET /api/staff — owner only. List all staff with masked API keys.
-staff.get('/api/staff', requireRole('owner'), async (c) => {
+staff.get('/api/staff', requireRole('system_admin'), async (c) => {
   try {
     const members = await getStaffMembers(c.env.DB);
     return c.json({ success: true, data: members.map((m) => serializeStaff(m, true)) });
@@ -84,7 +84,7 @@ staff.get('/api/staff', requireRole('owner'), async (c) => {
 });
 
 // GET /api/staff/:id — owner only. Get staff detail with masked key.
-staff.get('/api/staff/:id', requireRole('owner'), async (c) => {
+staff.get('/api/staff/:id', requireRole('system_admin'), async (c) => {
   try {
     const id = c.req.param('id')!;
     const member = await getStaffById(c.env.DB, id);
@@ -99,7 +99,7 @@ staff.get('/api/staff/:id', requireRole('owner'), async (c) => {
 });
 
 // POST /api/staff — owner only. Create staff. Returns full API key (one-time visible).
-staff.post('/api/staff', requireRole('owner'), async (c) => {
+staff.post('/api/staff', requireRole('system_admin'), async (c) => {
   try {
     const body = await c.req.json<{ name: string; email?: string; role: string; lineAccountId?: string | null }>();
 
@@ -107,19 +107,19 @@ staff.post('/api/staff', requireRole('owner'), async (c) => {
       return c.json({ success: false, error: 'name is required' }, 400);
     }
 
-    const validRoles = ['owner', 'admin', 'staff'] as const;
+    const validRoles = ['system_admin', 'clinic_admin', 'staff'] as const;
     if (!body.role || !validRoles.includes(body.role as (typeof validRoles)[number])) {
-      return c.json({ success: false, error: 'role must be owner, admin, or staff' }, 400);
+      return c.json({ success: false, error: 'role must be system_admin, clinic_admin, or staff' }, 400);
     }
 
-    if ((body.role === 'admin' || body.role === 'staff') && !body.lineAccountId) {
-      return c.json({ success: false, error: 'lineAccountId is required for admin/staff role' }, 400);
+    if ((body.role === 'clinic_admin' || body.role === 'staff') && !body.lineAccountId) {
+      return c.json({ success: false, error: 'lineAccountId is required for clinic_admin/staff role' }, 400);
     }
 
     const member = await createStaffMember(c.env.DB, {
       name: body.name,
       email: body.email ?? null,
-      role: body.role as 'owner' | 'admin' | 'staff',
+      role: body.role as 'system_admin' | 'clinic_admin' | 'staff',
       line_account_id: body.lineAccountId ?? null,
     });
 
@@ -132,7 +132,7 @@ staff.post('/api/staff', requireRole('owner'), async (c) => {
 });
 
 // PATCH /api/staff/:id — owner only. Update staff.
-staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
+staff.patch('/api/staff/:id', requireRole('system_admin'), async (c) => {
   try {
     const id = c.req.param('id')!;
     const body = await c.req.json<{
@@ -143,22 +143,22 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
       lineAccountId?: string | null;
     }>();
 
-    const validRoles = ['owner', 'admin', 'staff'] as const;
+    const validRoles = ['system_admin', 'clinic_admin', 'staff'] as const;
     if (body.role !== undefined && !validRoles.includes(body.role as (typeof validRoles)[number])) {
-      return c.json({ success: false, error: 'role must be owner, admin, or staff' }, 400);
+      return c.json({ success: false, error: 'role must be system_admin, clinic_admin, or staff' }, 400);
     }
 
-    // Prevent removing the last active owner
+    // Prevent removing the last active system_admin
     const target = await getStaffById(c.env.DB, id);
     if (!target) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
-    if (target.role === 'owner' && target.is_active === 1) {
+    if (target.role === 'system_admin' && target.is_active === 1) {
       const willLoseOwner =
-        (body.role !== undefined && body.role !== 'owner') ||
+        (body.role !== undefined && body.role !== 'system_admin') ||
         body.isActive === false;
       if (willLoseOwner) {
-        const ownerCount = await countActiveStaffByRole(c.env.DB, 'owner');
+        const ownerCount = await countActiveStaffByRole(c.env.DB, 'system_admin');
         if (ownerCount <= 1) {
           return c.json({ success: false, error: 'オーナーは最低1人必要です' }, 400);
         }
@@ -168,7 +168,7 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
     const updated = await updateStaffMember(c.env.DB, id, {
       name: body.name,
       email: body.email,
-      role: body.role as 'owner' | 'admin' | 'staff' | undefined,
+      role: body.role as 'system_admin' | 'clinic_admin' | 'staff' | undefined,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
       line_account_id: body.lineAccountId,
     });
@@ -185,7 +185,7 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
 });
 
 // DELETE /api/staff/:id — owner only. Cannot delete self. Must keep at least 1 owner.
-staff.delete('/api/staff/:id', requireRole('owner'), async (c) => {
+staff.delete('/api/staff/:id', requireRole('system_admin'), async (c) => {
   try {
     const id = c.req.param('id')!;
     const currentStaff = c.get('staff');
@@ -199,8 +199,8 @@ staff.delete('/api/staff/:id', requireRole('owner'), async (c) => {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
 
-    if (target.role === 'owner' && target.is_active === 1) {
-      const ownerCount = await countActiveStaffByRole(c.env.DB, 'owner');
+    if (target.role === 'system_admin' && target.is_active === 1) {
+      const ownerCount = await countActiveStaffByRole(c.env.DB, 'system_admin');
       if (ownerCount <= 1) {
         return c.json({ success: false, error: 'オーナーは最低1人必要です' }, 400);
       }
@@ -215,7 +215,7 @@ staff.delete('/api/staff/:id', requireRole('owner'), async (c) => {
 });
 
 // POST /api/staff/:id/regenerate-key — owner only. Return new API key.
-staff.post('/api/staff/:id/regenerate-key', requireRole('owner'), async (c) => {
+staff.post('/api/staff/:id/regenerate-key', requireRole('system_admin'), async (c) => {
   try {
     const id = c.req.param('id')!;
     const exists = await getStaffById(c.env.DB, id);

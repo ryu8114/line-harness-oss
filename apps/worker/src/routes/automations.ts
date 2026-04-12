@@ -104,7 +104,7 @@ automations.post('/api/automations', async (c) => {
       return c.json({ success: false, error: 'name, eventType, actions are required' }, 400);
     }
     const staff = c.get('staff');
-    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
+    const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : (body.lineAccountId ?? null);
     const item = await createAutomation(c.env.DB, body);
     // Save line_account_id
     if (resolvedAccountId) {

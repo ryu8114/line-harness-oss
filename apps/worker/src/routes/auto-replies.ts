@@ -31,7 +31,7 @@ autoReplies.get('/api/auto-replies', async (c) => {
     const accountId = c.get('resolvedLineAccountId') ?? c.req.query('accountId');
     const staff = c.get('staff');
     let items;
-    if (accountId && staff?.role !== 'owner') {
+    if (accountId && staff?.role !== 'system_admin') {
       // scoped user: exclude legacy NULL rows
       const result = await c.env.DB
         .prepare(`SELECT * FROM auto_replies WHERE line_account_id = ? ORDER BY created_at DESC`)
@@ -86,7 +86,7 @@ autoReplies.post('/api/auto-replies', async (c) => {
 
     const staff = c.get('staff');
     // admin/staff は body の lineAccountId を無視して自院IDを使う
-    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
+    const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : (body.lineAccountId ?? null);
     const item = await createAutoReply(c.env.DB, {
       keyword: body.keyword,
       matchType: body.matchType,

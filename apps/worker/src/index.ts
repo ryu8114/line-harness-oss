@@ -62,7 +62,7 @@ export type Env = {
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
   };
   Variables: {
-    staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff'; lineAccountId: string | null };
+    staff: { id: string; name: string; role: 'system_admin' | 'clinic_admin' | 'staff'; lineAccountId: string | null };
     resolvedLineAccountId: string | null;
   };
 };

@@ -148,7 +148,7 @@ scenarios.post('/api/scenarios', async (c) => {
 
     const staff = c.get('staff');
     // admin/staff は body の lineAccountId を無視して自院IDを使う
-    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
+    const resolvedAccountId = staff.role !== 'system_admin' ? staff.lineAccountId : (body.lineAccountId ?? null);
 
     let scenario = await createScenario(c.env.DB, {
       name: body.name,

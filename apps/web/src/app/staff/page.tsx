@@ -9,13 +9,13 @@ type NewApiKey = { apiKey: string; staffId: string }
 
 function RoleBadge({ role }: { role: string }) {
   const styles =
-    role === 'owner'
+    role === 'system_admin'
       ? 'bg-yellow-100 text-yellow-800'
-      : role === 'admin'
+      : role === 'clinic_admin'
         ? 'bg-blue-100 text-blue-800'
         : 'bg-gray-100 text-gray-600'
   const label =
-    role === 'owner' ? 'オーナー' : role === 'admin' ? '管理者' : 'スタッフ'
+    role === 'system_admin' ? 'オーナー' : role === 'clinic_admin' ? '管理者' : 'スタッフ'
   return (
     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${styles}`}>
       {label}
@@ -41,7 +41,7 @@ export default function StaffPage() {
   const [showForm, setShowForm] = useState(false)
   const [formName, setFormName] = useState('')
   const [formEmail, setFormEmail] = useState('')
-  const [formRole, setFormRole] = useState<'admin' | 'staff'>('staff')
+  const [formRole, setFormRole] = useState<'clinic_admin' | 'staff'>('staff')
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -71,7 +71,7 @@ export default function StaffPage() {
     setFormLoading(true)
     setFormError('')
     try {
-      const body: { name: string; role: 'admin' | 'staff'; email?: string } = {
+      const body: { name: string; role: 'clinic_admin' | 'staff'; email?: string } = {
         name: formName,
         role: formRole,
       }
@@ -217,11 +217,11 @@ export default function StaffPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">ロール *</label>
                 <select
                   value={formRole}
-                  onChange={(e) => setFormRole(e.target.value as 'admin' | 'staff')}
+                  onChange={(e) => setFormRole(e.target.value as 'clinic_admin' | 'staff')}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="staff">スタッフ</option>
-                  <option value="admin">管理者</option>
+                  <option value="clinic_admin">管理者</option>
                 </select>
               </div>
             </div>
@@ -307,7 +307,7 @@ export default function StaffPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      {member.role !== 'owner' && (
+                      {member.role !== 'system_admin' && (
                         <>
                           <button
                             onClick={() => handleToggleActive(member)}

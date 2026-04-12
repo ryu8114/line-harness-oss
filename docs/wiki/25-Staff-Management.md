@@ -1,6 +1,6 @@
 # 25. スタッフ管理 (Staff Management)
 
-LINE Harness のスタッフ管理機能。APIキーごとにロール（owner / admin / staff）を割り当て、操作権限を制御する。
+LINE Harness のスタッフ管理機能。APIキーごとにロール（system_admin / clinic_admin / staff）を割り当て、操作権限を制御する。
 
 ---
 
@@ -8,15 +8,15 @@ LINE Harness のスタッフ管理機能。APIキーごとにロール（owner /
 
 従来の単一APIキー認証を拡張し、複数のスタッフが個別のAPIキーでログイン・操作できる。
 
-- **owner** — 全権限。スタッフ管理・LINE アカウント設定を含む
-- **admin** — 運用全般。スタッフ管理以外の全機能
+- **system_admin** — 全権限。スタッフ管理・LINE アカウント設定を含む（旧: owner）
+- **clinic_admin** — 運用全般。スタッフ管理以外の全機能（旧: admin）
 - **staff** — 日常CRM操作。設定変更・緊急操作は不可
 
 ---
 
 ## 権限マトリクス
 
-| 操作 | owner | admin | staff |
+| 操作 | system_admin | clinic_admin | staff |
 |------|:-----:|:-----:|:-----:|
 | 友だち閲覧・検索 | o | o | o |
 | メッセージ送信 | o | o | o |
@@ -41,16 +41,16 @@ LINE Harness のスタッフ管理機能。APIキーごとにロール（owner /
   → staff_members テーブルで api_key を検索
     → 見つかった: ロールをリクエストコンテキストに設定
     → 見つからない: 環境変数 API_KEY と比較
-      → 一致: owner として扱う
+      → 一致: system_admin として扱う
       → 不一致: 401 Unauthorized
   → ルートハンドラーでロールチェック
     → 許可: 処理続行
-    → 拒否: 403 "この操作にはowner権限が必要です"
+    → 拒否: 403 "この操作にはsystem_admin権限が必要です"
 ```
 
 ### 後方互換性
 
-- 環境変数 `API_KEY` は常に owner として機能（従来通り）
+- 環境変数 `API_KEY` は常に system_admin として機能（従来通り）
 - `staff_members` テーブルが空でも、既存の API_KEY で全機能が使える
 
 ---
@@ -64,10 +64,10 @@ LINE Harness のスタッフ管理機能。APIキーごとにロール（owner /
 { "success": true, "data": { "id": "xxx", "name": "田中太郎", "role": "staff", "email": null } }
 ```
 
-### `GET /api/staff` (owner only)
+### `GET /api/staff` (system_admin only)
 スタッフ一覧。APIキーはマスク表示（末尾4文字のみ）。
 
-### `POST /api/staff` (owner only)
+### `POST /api/staff` (system_admin only)
 スタッフ作成。APIキーは作成時のみフル表示。
 
 ```json
@@ -78,13 +78,13 @@ LINE Harness のスタッフ管理機能。APIキーごとにロール（owner /
 { "success": true, "data": { "id": "xxx", "name": "田中太郎", "role": "staff", "apiKey": "lh_a1b2c3d4..." } }
 ```
 
-### `PATCH /api/staff/:id` (owner only)
+### `PATCH /api/staff/:id` (system_admin only)
 名前・メール・ロール・有効/無効を更新。
 
-### `DELETE /api/staff/:id` (owner only)
-スタッフ削除。自分自身の削除、最後のアクティブownerの削除は不可。
+### `DELETE /api/staff/:id` (system_admin only)
+スタッフ削除。自分自身の削除、最後のアクティブ system_admin の削除は不可。
 
-### `POST /api/staff/:id/regenerate-key` (owner only)
+### `POST /api/staff/:id/regenerate-key` (system_admin only)
 APIキー再発行。旧キーは即時無効化。
 
 ---
@@ -92,9 +92,9 @@ APIキー再発行。旧キーは即時無効化。
 ## MCP で操作
 
 ```
-> スタッフ「田中」をadminロールで追加して
+> スタッフ「田中」をclinic_adminロールで追加して
 
-→ manage_staff ツール: action=create, name="田中", role="admin"
+→ manage_staff ツール: action=create, name="田中", role="clinic_admin"
 → APIキーが生成され表示
 
 > スタッフ一覧を見せて
@@ -126,7 +126,7 @@ const members = await lh.staff.list()
 const me = await lh.staff.me()
 
 // ロール変更
-await lh.staff.update(member.id, { role: 'admin' })
+await lh.staff.update(member.id, { role: 'clinic_admin' })
 
 // APIキー再発行
 const { apiKey } = await lh.staff.regenerateKey(member.id)
@@ -139,7 +139,7 @@ await lh.staff.delete(member.id)
 
 ## 管理画面
 
-サイドバーの「設定」→「スタッフ管理」から操作可能（owner のみ表示）。
+サイドバーの「設定」→「スタッフ管理」から操作可能（system_admin のみ表示）。
 
 - スタッフ追加フォーム（名前・メール・ロール選択）
 - APIキーのワンタイム表示 + コピーボタン
@@ -155,7 +155,7 @@ CREATE TABLE staff_members (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
   email      TEXT,
-  role       TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'staff')),
+  role       TEXT NOT NULL CHECK (role IN ('system_admin', 'clinic_admin', 'staff')),
   api_key    TEXT UNIQUE NOT NULL,
   is_active  INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
@@ -163,4 +163,4 @@ CREATE TABLE staff_members (
 );
 ```
 
-マイグレーション: `packages/db/migrations/011_staff_members.sql`
+マイグレーション: `packages/db/migrations/022_rename_staff_roles.sql`

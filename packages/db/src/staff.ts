@@ -4,7 +4,7 @@ export interface StaffMember {
   id: string;
   name: string;
   email: string | null;
-  role: 'owner' | 'admin' | 'staff';
+  role: 'system_admin' | 'clinic_admin' | 'staff';
   api_key: string;
   is_active: number;
   line_account_id: string | null;
@@ -15,14 +15,14 @@ export interface StaffMember {
 export interface CreateStaffInput {
   name: string;
   email?: string | null;
-  role: 'owner' | 'admin' | 'staff';
+  role: 'system_admin' | 'clinic_admin' | 'staff';
   line_account_id?: string | null;
 }
 
 export interface UpdateStaffInput {
   name?: string;
   email?: string | null;
-  role?: 'owner' | 'admin' | 'staff';
+  role?: 'system_admin' | 'clinic_admin' | 'staff';
   is_active?: number;
   line_account_id?: string | null;
 }
