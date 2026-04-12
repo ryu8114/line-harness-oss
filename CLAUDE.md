@@ -52,6 +52,26 @@ LINE Harness OSSをベースに予約機能を拡張したもの。
 
 ---
 
+## デプロイ手順
+
+### Worker デプロイ
+**必ず `npm run deploy` を使うこと。`wrangler deploy` 単体は NG。**
+
+```bash
+cd apps/worker
+npm run deploy   # vite build && wrangler deploy
+```
+
+`wrangler deploy` だけ実行すると vite ビルドがスキップされ、古いコードが本番に乗る。
+過去に同様の事故が複数回発生している。
+
+### D1 マイグレーション（本番）
+```bash
+npx wrangler d1 execute line-harness --remote --file=packages/db/migrations/<ファイル名>.sql
+```
+
+---
+
 ## 複数院追加の手順
 
 1. LINE Developers でプロバイダー「タナカワークス」に Messaging API チャンネルを追加
