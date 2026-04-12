@@ -13,6 +13,7 @@ import {
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
 import { buildMessage } from '../services/step-delivery.js';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const friends = new Hono<Env>();
@@ -50,7 +51,7 @@ friends.get('/api/friends', async (c) => {
     const limit = Number(c.req.query('limit') ?? '50');
     const offset = Number(c.req.query('offset') ?? '0');
     const tagId = c.req.query('tagId');
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     const search = c.req.query('search');
 
     const db = c.env.DB;
@@ -119,7 +120,7 @@ friends.get('/api/friends', async (c) => {
 // GET /api/friends/count - friend count (must be before /:id)
 friends.get('/api/friends/count', async (c) => {
   try {
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     let count: number;
     if (lineAccountId) {
       const row = await c.env.DB.prepare('SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?')
@@ -138,7 +139,7 @@ friends.get('/api/friends/count', async (c) => {
 // GET /api/friends/ref-stats - ref code attribution stats
 friends.get('/api/friends/ref-stats', async (c) => {
   try {
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     const where = lineAccountId ? 'WHERE line_account_id = ?' : 'WHERE ref_code IS NOT NULL';
     const binds = lineAccountId ? [lineAccountId] : [];
     const stmt = c.env.DB.prepare(
@@ -176,6 +177,10 @@ friends.get('/api/friends/:id', async (c) => {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
 
+    if (!checkOwnership(c.get('staff'), friend.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
+
     return c.json({
       success: true,
       data: {
@@ -200,6 +205,11 @@ friends.post('/api/friends/:id/tags', async (c) => {
     }
 
     const db = c.env.DB;
+    const friend = await getFriendById(db, friendId);
+    if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+    if (!checkOwnership(c.get('staff'), friend.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     await addTagToFriend(db, friendId, body.tagId);
 
     // Enroll in tag_added scenarios that match this tag
@@ -232,6 +242,11 @@ friends.delete('/api/friends/:id/tags/:tagId', async (c) => {
     const friendId = c.req.param('id');
     const tagId = c.req.param('tagId');
 
+    const friend = await getFriendById(c.env.DB, friendId);
+    if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+    if (!checkOwnership(c.get('staff'), friend.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     await removeTagFromFriend(c.env.DB, friendId, tagId);
 
     // イベントバス発火: tag_change
@@ -253,6 +268,11 @@ friends.put('/api/friends/:id/metadata', async (c) => {
     const friend = await getFriendById(db, friendId);
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
+    }
+
+    const staff = c.get('staff');
+    if (!checkOwnership(staff, (friend as unknown as Record<string, unknown>).line_account_id as string ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
 
     const body = await c.req.json<Record<string, unknown>>();
@@ -285,6 +305,14 @@ friends.put('/api/friends/:id/metadata', async (c) => {
 friends.get('/api/friends/:id/messages', async (c) => {
   try {
     const friendId = c.req.param('id');
+    const friend = await getFriendById(c.env.DB, friendId);
+    if (!friend) {
+      return c.json({ success: false, error: 'Friend not found' }, 404);
+    }
+    const staff = c.get('staff');
+    if (!checkOwnership(staff, (friend as unknown as Record<string, unknown>).line_account_id as string ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const result = await c.env.DB
       .prepare(
         `SELECT id, direction, message_type as messageType, content, created_at as createdAt
@@ -317,6 +345,11 @@ friends.post('/api/friends/:id/messages', async (c) => {
     const friend = await getFriendById(db, friendId);
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
+    }
+
+    const staff = c.get('staff');
+    if (!checkOwnership(staff, (friend as unknown as Record<string, unknown>).line_account_id as string ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
 
     const { LineClient } = await import('@line-crm/line-sdk');

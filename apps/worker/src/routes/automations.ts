@@ -7,6 +7,7 @@ import {
   deleteAutomation,
   getAutomationLogs,
 } from '@line-crm/db';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const automations = new Hono<Env>();
@@ -15,7 +16,7 @@ const automations = new Hono<Env>();
 
 automations.get('/api/automations', async (c) => {
   try {
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     let items;
     if (lineAccountId) {
       const result = await c.env.DB
@@ -51,6 +52,10 @@ automations.get('/api/automations/:id', async (c) => {
   try {
     const item = await getAutomationById(c.env.DB, c.req.param('id'));
     if (!item) return c.json({ success: false, error: 'Automation not found' }, 404);
+    const itemR = item as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (itemR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
 
     // ログも取得
     const logs = await getAutomationLogs(c.env.DB, item.id, 50);
@@ -98,11 +103,13 @@ automations.post('/api/automations', async (c) => {
     if (!body.name || !body.eventType || !body.actions) {
       return c.json({ success: false, error: 'name, eventType, actions are required' }, 400);
     }
+    const staff = c.get('staff');
+    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
     const item = await createAutomation(c.env.DB, body);
-    // Save line_account_id if provided
-    if (body.lineAccountId) {
+    // Save line_account_id
+    if (resolvedAccountId) {
       await c.env.DB.prepare(`UPDATE automations SET line_account_id = ? WHERE id = ?`)
-        .bind(body.lineAccountId, item.id).run();
+        .bind(resolvedAccountId, item.id).run();
     }
     return c.json({
       success: true,
@@ -125,6 +132,12 @@ automations.post('/api/automations', async (c) => {
 automations.put('/api/automations/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existingAuto = await getAutomationById(c.env.DB, id);
+    if (!existingAuto) return c.json({ success: false, error: 'Not found' }, 404);
+    const existingAutoR = existingAuto as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingAutoR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const body = await c.req.json();
     await updateAutomation(c.env.DB, id, body);
     const updated = await getAutomationById(c.env.DB, id);
@@ -149,6 +162,12 @@ automations.put('/api/automations/:id', async (c) => {
 
 automations.delete('/api/automations/:id', async (c) => {
   try {
+    const existingAutoDel = await getAutomationById(c.env.DB, c.req.param('id'));
+    if (!existingAutoDel) return c.json({ success: false, error: 'Automation not found' }, 404);
+    const existingAutoDelR = existingAutoDel as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingAutoDelR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     await deleteAutomation(c.env.DB, c.req.param('id'));
     return c.json({ success: true, data: null });
   } catch (err) {
@@ -162,6 +181,12 @@ automations.delete('/api/automations/:id', async (c) => {
 automations.get('/api/automations/:id/logs', async (c) => {
   try {
     const automationId = c.req.param('id');
+    const automation = await getAutomationById(c.env.DB, automationId);
+    if (!automation) return c.json({ success: false, error: 'Automation not found' }, 404);
+    const automationR = automation as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (automationR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const limit = Number(c.req.query('limit') ?? '100');
     const logs = await getAutomationLogs(c.env.DB, automationId, limit);
     return c.json({

@@ -21,6 +21,7 @@ import {
   getBookingById,
   updateBookingStatus,
 } from '@line-crm/db';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const bookingAdmin = new Hono<Env>();
@@ -28,7 +29,7 @@ const bookingAdmin = new Hono<Env>();
 // ---- メニュー管理 ----------------------------------------------------------
 
 bookingAdmin.get('/api/booking/admin/menus', async (c) => {
-  const lineAccountId = c.req.query('line_account_id');
+  const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('line_account_id');
   if (!lineAccountId) return c.json({ success: false, error: 'line_account_id is required' }, 400);
 
   const menus = await getMenusByAccount(c.env.DB, lineAccountId);
@@ -47,11 +48,17 @@ bookingAdmin.post('/api/booking/admin/menus', async (c) => {
     lineAccountId: string; name: string; duration: number;
     price?: number; description?: string; sortOrder?: number;
   }>();
-  if (!body.lineAccountId || !body.name || !body.duration) {
-    return c.json({ success: false, error: 'lineAccountId, name, duration are required' }, 400);
+  if (!body.name || !body.duration) {
+    return c.json({ success: false, error: 'name, duration are required' }, 400);
+  }
+  const staff = c.get('staff');
+  // admin/staff は body の lineAccountId を無視して自院IDを使う
+  const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : body.lineAccountId;
+  if (!resolvedAccountId) {
+    return c.json({ success: false, error: 'lineAccountId is required' }, 400);
   }
   const menu = await createMenu(c.env.DB, {
-    lineAccountId: body.lineAccountId, name: body.name, duration: body.duration,
+    lineAccountId: resolvedAccountId, name: body.name, duration: body.duration,
     price: body.price, description: body.description, sortOrder: body.sortOrder,
   });
   return c.json({ success: true, data: { id: menu.id, name: menu.name, duration: menu.duration } }, 201);
@@ -59,6 +66,11 @@ bookingAdmin.post('/api/booking/admin/menus', async (c) => {
 
 bookingAdmin.put('/api/booking/admin/menus/:id', async (c) => {
   const id = c.req.param('id');
+  const menu = await getMenuById(c.env.DB, id);
+  if (!menu) return c.json({ success: false, error: 'Menu not found' }, 404);
+  if (!checkOwnership(c.get('staff'), menu.line_account_id ?? null)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
   const body = await c.req.json<{
     name?: string; duration?: number; price?: number | null;
     description?: string | null; isActive?: number; sortOrder?: number;
@@ -75,6 +87,9 @@ bookingAdmin.delete('/api/booking/admin/menus/:id', async (c) => {
   const id = c.req.param('id');
   const menu = await getMenuById(c.env.DB, id);
   if (!menu) return c.json({ success: false, error: 'Menu not found' }, 404);
+  if (!checkOwnership(c.get('staff'), menu.line_account_id ?? null)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
   await deleteMenu(c.env.DB, id);
   return c.json({ success: true, data: null });
 });
@@ -82,7 +97,7 @@ bookingAdmin.delete('/api/booking/admin/menus/:id', async (c) => {
 // ---- 営業時間管理 ----------------------------------------------------------
 
 bookingAdmin.get('/api/booking/admin/business-hours', async (c) => {
-  const lineAccountId = c.req.query('line_account_id');
+  const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('line_account_id');
   if (!lineAccountId) return c.json({ success: false, error: 'line_account_id is required' }, 400);
 
   const hours = await getBusinessHoursByAccount(c.env.DB, lineAccountId);
@@ -103,12 +118,18 @@ bookingAdmin.put('/api/booking/admin/business-hours', async (c) => {
       breakStart?: string | null; breakEnd?: string | null;
     }>;
   }>();
-  if (!body.lineAccountId || !Array.isArray(body.hours)) {
-    return c.json({ success: false, error: 'lineAccountId and hours[] are required' }, 400);
+  if (!Array.isArray(body.hours)) {
+    return c.json({ success: false, error: 'hours[] is required' }, 400);
+  }
+  const staff = c.get('staff');
+  // admin/staff は body の lineAccountId を無視して自院IDを使う
+  const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : body.lineAccountId;
+  if (!resolvedAccountId) {
+    return c.json({ success: false, error: 'lineAccountId is required' }, 400);
   }
   for (const h of body.hours) {
     await upsertBusinessHour(c.env.DB, {
-      lineAccountId: body.lineAccountId, dayOfWeek: h.dayOfWeek,
+      lineAccountId: resolvedAccountId, dayOfWeek: h.dayOfWeek,
       openTime: h.openTime, closeTime: h.closeTime,
       breakStart: h.breakStart, breakEnd: h.breakEnd,
     });
@@ -119,7 +140,7 @@ bookingAdmin.put('/api/booking/admin/business-hours', async (c) => {
 // ---- 例外日管理 ------------------------------------------------------------
 
 bookingAdmin.get('/api/booking/admin/schedule-exceptions', async (c) => {
-  const lineAccountId = c.req.query('line_account_id');
+  const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('line_account_id');
   if (!lineAccountId) return c.json({ success: false, error: 'line_account_id is required' }, 400);
 
   const exceptions = await getScheduleExceptionsByAccount(c.env.DB, lineAccountId);
@@ -138,28 +159,43 @@ bookingAdmin.post('/api/booking/admin/schedule-exceptions', async (c) => {
     lineAccountId: string; date: string; type: 'closed' | 'partial';
     openTime?: string; closeTime?: string; note?: string;
   }>();
-  if (!body.lineAccountId || !body.date || !body.type) {
-    return c.json({ success: false, error: 'lineAccountId, date, type are required' }, 400);
+  if (!body.date || !body.type) {
+    return c.json({ success: false, error: 'date, type are required' }, 400);
   }
   if (body.type === 'partial' && (!body.openTime || !body.closeTime)) {
     return c.json({ success: false, error: 'openTime and closeTime are required for partial exceptions' }, 400);
   }
+  const staff = c.get('staff');
+  const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : body.lineAccountId;
+  if (!resolvedAccountId) {
+    return c.json({ success: false, error: 'lineAccountId is required' }, 400);
+  }
   const exception = await createScheduleException(c.env.DB, {
-    lineAccountId: body.lineAccountId, date: body.date, type: body.type,
+    lineAccountId: resolvedAccountId, date: body.date, type: body.type,
     openTime: body.openTime, closeTime: body.closeTime, note: body.note,
   });
   return c.json({ success: true, data: { id: exception.id, date: exception.date, type: exception.type } }, 201);
 });
 
 bookingAdmin.delete('/api/booking/admin/schedule-exceptions/:id', async (c) => {
-  await deleteScheduleException(c.env.DB, c.req.param('id'));
+  const id = c.req.param('id');
+  // 所有権確認のために対象レコードを取得
+  const exception = await c.env.DB
+    .prepare('SELECT line_account_id FROM schedule_exceptions WHERE id = ?')
+    .bind(id)
+    .first<{ line_account_id: string | null }>();
+  if (!exception) return c.json({ success: false, error: 'Schedule exception not found' }, 404);
+  if (!checkOwnership(c.get('staff'), exception.line_account_id ?? null)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
+  await deleteScheduleException(c.env.DB, id);
   return c.json({ success: true, data: null });
 });
 
 // ---- 予約管理 --------------------------------------------------------------
 
 bookingAdmin.get('/api/booking/admin/bookings', async (c) => {
-  const lineAccountId = c.req.query('line_account_id');
+  const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('line_account_id');
   if (!lineAccountId) return c.json({ success: false, error: 'line_account_id is required' }, 400);
 
   const from = c.req.query('from');
@@ -185,6 +221,9 @@ bookingAdmin.get('/api/booking/admin/bookings', async (c) => {
 bookingAdmin.get('/api/booking/admin/bookings/:id', async (c) => {
   const booking = await getBookingById(c.env.DB, c.req.param('id'));
   if (!booking) return c.json({ success: false, error: 'Booking not found' }, 404);
+  if (!checkOwnership(c.get('staff'), booking.line_account_id ?? null)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
   return c.json({
     success: true,
     data: {
@@ -201,6 +240,9 @@ bookingAdmin.put('/api/booking/admin/bookings/:id', async (c) => {
   const id = c.req.param('id');
   const booking = await getBookingById(c.env.DB, id);
   if (!booking) return c.json({ success: false, error: 'Booking not found' }, 404);
+  if (!checkOwnership(c.get('staff'), booking.line_account_id ?? null)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
 
   const { status } = await c.req.json<{ status: string }>();
   if (!status) return c.json({ success: false, error: 'status is required' }, 400);

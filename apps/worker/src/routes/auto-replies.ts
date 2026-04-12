@@ -7,6 +7,7 @@ import {
   deleteAutoReply,
 } from '@line-crm/db';
 import type { AutoReply as DbAutoReply } from '@line-crm/db';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const autoReplies = new Hono<Env>();
@@ -27,8 +28,19 @@ function serializeAutoReply(row: DbAutoReply) {
 // GET /api/auto-replies — list all auto-replies (optional ?accountId filter)
 autoReplies.get('/api/auto-replies', async (c) => {
   try {
-    const accountId = c.req.query('accountId');
-    const items = await getAutoReplies(c.env.DB, accountId || undefined);
+    const accountId = c.get('resolvedLineAccountId') ?? c.req.query('accountId');
+    const staff = c.get('staff');
+    let items;
+    if (accountId && staff?.role !== 'owner') {
+      // scoped user: exclude legacy NULL rows
+      const result = await c.env.DB
+        .prepare(`SELECT * FROM auto_replies WHERE line_account_id = ? ORDER BY created_at DESC`)
+        .bind(accountId)
+        .all<import('@line-crm/db').AutoReply>();
+      items = result.results;
+    } else {
+      items = await getAutoReplies(c.env.DB, accountId || undefined);
+    }
     return c.json({ success: true, data: items.map(serializeAutoReply) });
   } catch (err) {
     console.error('GET /api/auto-replies error:', err);
@@ -43,6 +55,9 @@ autoReplies.get('/api/auto-replies/:id', async (c) => {
     const item = await getAutoReplyById(c.env.DB, id);
     if (!item) {
       return c.json({ success: false, error: 'Auto-reply not found' }, 404);
+    }
+    if (!checkOwnership(c.get('staff'), item.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
     return c.json({ success: true, data: serializeAutoReply(item) });
   } catch (err) {
@@ -69,12 +84,15 @@ autoReplies.post('/api/auto-replies', async (c) => {
       return c.json({ success: false, error: 'responseContent is required' }, 400);
     }
 
+    const staff = c.get('staff');
+    // admin/staff は body の lineAccountId を無視して自院IDを使う
+    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
     const item = await createAutoReply(c.env.DB, {
       keyword: body.keyword,
       matchType: body.matchType,
       responseType: body.responseType,
       responseContent: body.responseContent,
-      lineAccountId: body.lineAccountId ?? null,
+      lineAccountId: resolvedAccountId,
     });
 
     return c.json({ success: true, data: serializeAutoReply(item) }, 201);
@@ -88,6 +106,11 @@ autoReplies.post('/api/auto-replies', async (c) => {
 autoReplies.put('/api/auto-replies/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existingAR = await getAutoReplyById(c.env.DB, id);
+    if (!existingAR) return c.json({ success: false, error: 'Auto-reply not found' }, 404);
+    if (!checkOwnership(c.get('staff'), existingAR.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const body = await c.req.json<{
       keyword?: string;
       matchType?: 'exact' | 'contains';
@@ -125,6 +148,9 @@ autoReplies.delete('/api/auto-replies/:id', async (c) => {
     const item = await getAutoReplyById(c.env.DB, id);
     if (!item) {
       return c.json({ success: false, error: 'Auto-reply not found' }, 404);
+    }
+    if (!checkOwnership(c.get('staff'), item.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
     await deleteAutoReply(c.env.DB, id);
     return c.json({ success: true, data: null });

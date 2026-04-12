@@ -12,6 +12,7 @@ import {
   updateChat,
   jstNow,
 } from '@line-crm/db';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const chats = new Hono<Env>();
@@ -110,7 +111,7 @@ chats.get('/api/chats', async (c) => {
   try {
     const status = c.req.query('status') ?? undefined;
     const operatorId = c.req.query('operatorId') ?? undefined;
-    const lineAccountId = c.req.query('lineAccountId') ?? undefined;
+    const lineAccountId = (c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId')) ?? undefined;
 
     // JOIN friends to get display_name and picture_url
     let sql = `SELECT c.*, f.display_name, f.picture_url, f.line_user_id
@@ -167,6 +168,14 @@ chats.get('/api/chats/:id', async (c) => {
   try {
     const item = await getChatById(c.env.DB, c.req.param('id'));
     if (!item) return c.json({ success: false, error: 'Chat not found' }, 404);
+    // chats は line_account_id を持たないが friend 経由で院を確認
+    const chatFriendCheck = await c.env.DB
+      .prepare(`SELECT line_account_id FROM friends WHERE id = ?`)
+      .bind(item.friend_id)
+      .first<{ line_account_id: string | null }>();
+    if (!checkOwnership(c.get('staff'), chatFriendCheck?.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
 
     // 友だち情報を取得
     const friend = await c.env.DB
@@ -211,11 +220,13 @@ chats.post('/api/chats', async (c) => {
   try {
     const body = await c.req.json<{ friendId: string; operatorId?: string; lineAccountId?: string | null }>();
     if (!body.friendId) return c.json({ success: false, error: 'friendId is required' }, 400);
+    const staff = c.get('staff');
+    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
     const item = await createChat(c.env.DB, body);
-    // Save line_account_id if provided
-    if (body.lineAccountId) {
+    // Save line_account_id
+    if (resolvedAccountId) {
       await c.env.DB.prepare(`UPDATE chats SET line_account_id = ? WHERE id = ?`)
-        .bind(body.lineAccountId, item.id).run();
+        .bind(resolvedAccountId, item.id).run();
     }
     return c.json({ success: true, data: { id: item.id, friendId: item.friend_id, status: item.status } }, 201);
   } catch (err) {
@@ -228,6 +239,15 @@ chats.post('/api/chats', async (c) => {
 chats.put('/api/chats/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existing = await getChatById(c.env.DB, id);
+    if (!existing) return c.json({ success: false, error: 'Not found' }, 404);
+    const chatFriendCheck = await c.env.DB
+      .prepare(`SELECT line_account_id FROM friends WHERE id = ?`)
+      .bind(existing.friend_id)
+      .first<{ line_account_id: string | null }>();
+    if (!checkOwnership(c.get('staff'), chatFriendCheck?.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const body = await c.req.json<{ operatorId?: string | null; status?: string; notes?: string }>();
     await updateChat(c.env.DB, id, body);
     const updated = await getChatById(c.env.DB, id);
@@ -261,8 +281,11 @@ chats.post('/api/chats/:id/loading', async (c) => {
     const friend = await c.env.DB
       .prepare(`SELECT * FROM friends WHERE id = ?`)
       .bind(chat.friend_id)
-      .first<{ id: string; line_user_id: string }>();
+      .first<{ id: string; line_user_id: string; line_account_id: string | null }>();
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+    if (!checkOwnership(c.get('staff'), friend.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
 
     await startLoadingAnimation(
       c.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -291,8 +314,11 @@ chats.post('/api/chats/:id/send', async (c) => {
     const friend = await c.env.DB
       .prepare(`SELECT * FROM friends WHERE id = ?`)
       .bind(chat.friend_id)
-      .first<{ id: string; line_user_id: string }>();
+      .first<{ id: string; line_user_id: string; line_account_id: string | null }>();
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+    if (!checkOwnership(c.get('staff'), friend.line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
 
     // LINE APIでメッセージ送信
     const { LineClient } = await import('@line-crm/line-sdk');

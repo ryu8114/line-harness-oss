@@ -7,6 +7,7 @@ import {
   deleteNotificationRule,
   getNotifications,
 } from '@line-crm/db';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const notifications = new Hono<Env>();
@@ -15,7 +16,7 @@ const notifications = new Hono<Env>();
 
 notifications.get('/api/notifications/rules', async (c) => {
   try {
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     let items;
     if (lineAccountId) {
       const result = await c.env.DB
@@ -49,6 +50,10 @@ notifications.get('/api/notifications/rules/:id', async (c) => {
   try {
     const item = await getNotificationRuleById(c.env.DB, c.req.param('id'));
     if (!item) return c.json({ success: false, error: 'Not found' }, 404);
+    const itemR = item as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (itemR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     return c.json({
       success: true,
       data: {
@@ -72,6 +77,10 @@ notifications.post('/api/notifications/rules', async (c) => {
     const body = await c.req.json<{ name: string; eventType: string; conditions?: Record<string, unknown>; channels?: string[] }>();
     if (!body.name || !body.eventType) return c.json({ success: false, error: 'name and eventType are required' }, 400);
     const item = await createNotificationRule(c.env.DB, body);
+    const lineAccountId = c.get('resolvedLineAccountId');
+    if (lineAccountId) {
+      await c.env.DB.prepare(`UPDATE notification_rules SET line_account_id = ? WHERE id = ?`).bind(lineAccountId, item.id).run();
+    }
     return c.json({
       success: true,
       data: { id: item.id, name: item.name, eventType: item.event_type, channels: JSON.parse(item.channels), createdAt: item.created_at },
@@ -85,6 +94,12 @@ notifications.post('/api/notifications/rules', async (c) => {
 notifications.put('/api/notifications/rules/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existingRule = await getNotificationRuleById(c.env.DB, id);
+    if (!existingRule) return c.json({ success: false, error: 'Not found' }, 404);
+    const existingRuleR = existingRule as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingRuleR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const body = await c.req.json();
     await updateNotificationRule(c.env.DB, id, body);
     const updated = await getNotificationRuleById(c.env.DB, id);
@@ -101,6 +116,12 @@ notifications.put('/api/notifications/rules/:id', async (c) => {
 
 notifications.delete('/api/notifications/rules/:id', async (c) => {
   try {
+    const existingRuleDel = await getNotificationRuleById(c.env.DB, c.req.param('id'));
+    if (!existingRuleDel) return c.json({ success: false, error: 'Not found' }, 404);
+    const existingRuleDelR = existingRuleDel as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingRuleDelR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     await deleteNotificationRule(c.env.DB, c.req.param('id'));
     return c.json({ success: true, data: null });
   } catch (err) {
@@ -115,7 +136,7 @@ notifications.get('/api/notifications', async (c) => {
   try {
     const status = c.req.query('status') ?? undefined;
     const limit = Number(c.req.query('limit') ?? '100');
-    const lineAccountId = c.req.query('lineAccountId') ?? undefined;
+    const lineAccountId = (c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId')) ?? undefined;
     let items;
     if (lineAccountId) {
       const conditions: string[] = ['line_account_id = ?'];

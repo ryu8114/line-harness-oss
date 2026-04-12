@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import { LineClient } from '@line-crm/line-sdk';
 import { getFriendById, getLineAccountById } from '@line-crm/db';
+import { resolveLineAccountId, checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const richMenus = new Hono<Env>();
 
-/** Resolve LINE access token — uses accountId query param if provided, otherwise default */
-async function resolveLineClient(c: { env: Env['Bindings']; req: { query(key: string): string | undefined } }): Promise<LineClient> {
-  const accountId = c.req.query('accountId');
+/** Resolve LINE access token — uses resolvedLineAccountId (tenant-scoped) or accountId query param */
+async function resolveLineClient(c: Parameters<typeof resolveLineAccountId>[0] & { env: Env['Bindings'] }): Promise<LineClient> {
+  const accountId = resolveLineAccountId(c as Parameters<typeof resolveLineAccountId>[0]);
   if (accountId) {
     const account = await getLineAccountById(c.env.DB, accountId);
     if (account) return new LineClient(account.channel_access_token);
@@ -85,6 +86,9 @@ richMenus.post('/api/friends/:friendId/rich-menu', async (c) => {
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
+    if (!checkOwnership(c.get('staff'), (friend as unknown as Record<string, string | null>).line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
 
     let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
     const friendAccountId = (friend as unknown as Record<string, string | null>).line_account_id;
@@ -112,6 +116,9 @@ richMenus.delete('/api/friends/:friendId/rich-menu', async (c) => {
     const friend = await getFriendById(db, friendId);
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
+    }
+    if (!checkOwnership(c.get('staff'), (friend as unknown as Record<string, string | null>).line_account_id ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
 
     let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;

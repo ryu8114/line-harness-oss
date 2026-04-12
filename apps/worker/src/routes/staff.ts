@@ -26,6 +26,7 @@ function serializeStaff(row: StaffMember, masked = true) {
     role: row.role,
     apiKey: masked ? maskApiKey(row.api_key) : row.api_key,
     isActive: Boolean(row.is_active),
+    lineAccountId: row.line_account_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -45,6 +46,7 @@ staff.get('/api/staff/me', async (c) => {
           name: 'Owner',
           role: 'owner',
           email: null,
+          lineAccountId: null,
         },
       });
     }
@@ -61,6 +63,7 @@ staff.get('/api/staff/me', async (c) => {
         name: member.name,
         role: member.role,
         email: member.email,
+        lineAccountId: member.line_account_id,
       },
     });
   } catch (err) {
@@ -98,7 +101,7 @@ staff.get('/api/staff/:id', requireRole('owner'), async (c) => {
 // POST /api/staff — owner only. Create staff. Returns full API key (one-time visible).
 staff.post('/api/staff', requireRole('owner'), async (c) => {
   try {
-    const body = await c.req.json<{ name: string; email?: string; role: string }>();
+    const body = await c.req.json<{ name: string; email?: string; role: string; lineAccountId?: string | null }>();
 
     if (!body.name) {
       return c.json({ success: false, error: 'name is required' }, 400);
@@ -109,10 +112,15 @@ staff.post('/api/staff', requireRole('owner'), async (c) => {
       return c.json({ success: false, error: 'role must be owner, admin, or staff' }, 400);
     }
 
+    if ((body.role === 'admin' || body.role === 'staff') && !body.lineAccountId) {
+      return c.json({ success: false, error: 'lineAccountId is required for admin/staff role' }, 400);
+    }
+
     const member = await createStaffMember(c.env.DB, {
       name: body.name,
       email: body.email ?? null,
       role: body.role as 'owner' | 'admin' | 'staff',
+      line_account_id: body.lineAccountId ?? null,
     });
 
     // Return full (unmasked) API key one-time
@@ -132,6 +140,7 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
       email?: string | null;
       role?: string;
       isActive?: boolean;
+      lineAccountId?: string | null;
     }>();
 
     const validRoles = ['owner', 'admin', 'staff'] as const;
@@ -161,6 +170,7 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
       email: body.email,
       role: body.role as 'owner' | 'admin' | 'staff' | undefined,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
+      line_account_id: body.lineAccountId,
     });
 
     if (!updated) {

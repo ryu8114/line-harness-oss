@@ -37,13 +37,13 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   // Check staff_members table first
   const staff = await getStaffByApiKey(c.env.DB, token);
   if (staff) {
-    c.set('staff', { id: staff.id, name: staff.name, role: staff.role });
+    c.set('staff', { id: staff.id, name: staff.name, role: staff.role, lineAccountId: staff.line_account_id });
     return next();
   }
 
   // Fallback: env API_KEY acts as owner
   if (token === c.env.API_KEY) {
-    c.set('staff', { id: 'env-owner', name: 'Owner', role: 'owner' as const });
+    c.set('staff', { id: 'env-owner', name: 'Owner', role: 'owner' as const, lineAccountId: null });
     return next();
   }
 

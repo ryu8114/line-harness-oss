@@ -11,6 +11,7 @@ import { LineClient } from '@line-crm/line-sdk';
 import { processBroadcastSend } from '../services/broadcast.js';
 import { processSegmentSend } from '../services/segment-send.js';
 import type { SegmentCondition } from '../services/segment-query.js';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const broadcasts = new Hono<Env>();
@@ -39,7 +40,7 @@ function serializeBroadcast(row: DbBroadcast) {
 // GET /api/broadcasts - list all
 broadcasts.get('/api/broadcasts', async (c) => {
   try {
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     let items: DbBroadcast[];
     if (lineAccountId) {
       const result = await c.env.DB
@@ -65,6 +66,11 @@ broadcasts.get('/api/broadcasts/:id', async (c) => {
 
     if (!broadcast) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    }
+
+    const r = broadcast as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (r.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
 
     return c.json({ success: true, data: serializeBroadcast(broadcast) });
@@ -102,6 +108,10 @@ broadcasts.post('/api/broadcasts', async (c) => {
       );
     }
 
+    const staff = c.get('staff');
+    // admin/staff は body の lineAccountId を無視して自院IDを使う
+    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
+
     const broadcast = await createBroadcast(c.env.DB, {
       title: body.title,
       messageType: body.messageType,
@@ -114,7 +124,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
     // Save line_account_id and alt_text if provided
     const updates: string[] = [];
     const binds: unknown[] = [];
-    if (body.lineAccountId) { updates.push('line_account_id = ?'); binds.push(body.lineAccountId); }
+    if (resolvedAccountId) { updates.push('line_account_id = ?'); binds.push(resolvedAccountId); }
     if (body.altText) { updates.push('alt_text = ?'); binds.push(body.altText); }
     if (updates.length > 0) {
       binds.push(broadcast.id);
@@ -137,6 +147,11 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
 
     if (!existing) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    }
+
+    const existingR = existing as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
 
     if (existing.status !== 'draft' && existing.status !== 'scheduled') {
@@ -179,6 +194,12 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
 broadcasts.delete('/api/broadcasts/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existing = await getBroadcastById(c.env.DB, id);
+    if (!existing) return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    const existingR = existing as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     await deleteBroadcast(c.env.DB, id);
     return c.json({ success: true, data: null });
   } catch (err) {
@@ -197,12 +218,17 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
     }
 
+    const existingR2 = existing as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingR2.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
+
     if (existing.status === 'sending' || existing.status === 'sent') {
       return c.json({ success: false, error: 'Broadcast is already sent or sending' }, 400);
     }
 
     let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
-    const broadcastAccountId = (existing as Record<string, unknown>).line_account_id;
+    const broadcastAccountId = (existing as unknown as Record<string, unknown>).line_account_id;
     if (broadcastAccountId) {
       const { getLineAccountById } = await import('@line-crm/db');
       const account = await getLineAccountById(c.env.DB, broadcastAccountId as string);
@@ -229,6 +255,11 @@ broadcasts.post('/api/broadcasts/:id/send-segment', async (c) => {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
     }
 
+    const existingSegR = existing as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingSegR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
+
     if (existing.status === 'sending' || existing.status === 'sent') {
       return c.json({ success: false, error: 'Broadcast is already sent or sending' }, 400);
     }
@@ -243,7 +274,7 @@ broadcasts.post('/api/broadcasts/:id/send-segment', async (c) => {
     }
 
     let segAccessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
-    const segAccountId = (existing as Record<string, unknown>).line_account_id;
+    const segAccountId = (existing as unknown as Record<string, unknown>).line_account_id;
     if (segAccountId) {
       const { getLineAccountById } = await import('@line-crm/db');
       const account = await getLineAccountById(c.env.DB, segAccountId as string);
@@ -264,6 +295,15 @@ broadcasts.post('/api/broadcasts/:id/send-segment', async (c) => {
 broadcasts.get('/api/broadcasts/:id/insight', async (c) => {
   try {
     const id = c.req.param('id');
+    const broadcast = await getBroadcastById(c.env.DB, id);
+    if (!broadcast) {
+      return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    }
+    const staff = c.get('staff');
+    if (!checkOwnership(staff, (broadcast as unknown as Record<string, unknown>).line_account_id as string ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
+
     const insight = await c.env.DB.prepare(
       'SELECT * FROM broadcast_insights WHERE broadcast_id = ? ORDER BY created_at DESC LIMIT 1'
     ).bind(id).first<Record<string, unknown>>();
@@ -299,6 +339,10 @@ broadcasts.post('/api/broadcasts/:id/fetch-insight', async (c) => {
     const broadcast = await getBroadcastById(c.env.DB, id);
     if (!broadcast) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    }
+    const staff = c.get('staff');
+    if (!checkOwnership(staff, (broadcast as unknown as Record<string, unknown>).line_account_id as string ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
     if (broadcast.status !== 'sent') {
       return c.json({ success: false, error: 'Broadcast has not been sent yet' }, 400);

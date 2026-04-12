@@ -87,7 +87,7 @@ function AccountAvatar({ account, size = 32 }: { account: AccountWithStats; size
 }
 
 function AccountSwitcher() {
-  const { accounts, selectedAccount, setSelectedAccountId, loading } = useAccount()
+  const { accounts, selectedAccount, setSelectedAccountId, loading, isScoped } = useAccount()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -102,6 +102,20 @@ function AccountSwitcher() {
   if (loading || accounts.length === 0) return null
 
   const displayName = selectedAccount?.displayName || selectedAccount?.name || ''
+
+  // admin/staff は自院に固定（ドロップダウンを表示しない）
+  if (isScoped) {
+    return (
+      <div className="px-3 py-3 border-b border-gray-200">
+        <div className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg">
+          {selectedAccount && <AccountAvatar account={selectedAccount} size={28} />}
+          <div className="flex-1 text-left min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div ref={ref} className="px-3 py-3 border-b border-gray-200">

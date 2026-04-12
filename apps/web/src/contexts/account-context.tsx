@@ -28,6 +28,8 @@ interface AccountContextValue {
   setSelectedAccountId: (id: string) => void
   refreshAccounts: () => Promise<void>
   loading: boolean
+  /** admin/staff は自院に固定。true の場合アカウントセレクターを無効化する */
+  isScoped: boolean
 }
 
 const AccountContext = createContext<AccountContextValue | null>(null)
@@ -36,6 +38,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<AccountWithStats[]>([])
   const [selectedAccountId, setSelectedAccountIdState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isScoped, setIsScoped] = useState(false)
 
   const setSelectedAccountId = useCallback((id: string) => {
     setSelectedAccountIdState(id)
@@ -53,19 +56,32 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         const list = res.data as AccountWithStats[]
         setAccounts(list)
 
-        // If current selection is invalid (e.g. deleted), fall back to first
-        setSelectedAccountIdState((prev) => {
-          if (prev && list.some((a) => a.id === prev)) return prev
-          // Restore from localStorage or default to first
-          let stored: string | null = null
-          try {
-            stored = localStorage.getItem(STORAGE_KEY)
-          } catch {
-            // localStorage unavailable
-          }
-          const valid = stored && list.some((a) => a.id === stored)
-          return valid ? stored : list[0].id
-        })
+        // admin/staff の場合は自院に固定
+        let assignedAccountId: string | null = null
+        try {
+          assignedAccountId = localStorage.getItem('lh_line_account_id')
+        } catch {
+          // localStorage unavailable
+        }
+
+        if (assignedAccountId && list.some((a) => a.id === assignedAccountId)) {
+          // scoped user — 自院に固定
+          setSelectedAccountIdState(assignedAccountId)
+          setIsScoped(true)
+        } else {
+          // owner — localStorage または最初のアカウントを選択
+          setSelectedAccountIdState((prev) => {
+            if (prev && list.some((a) => a.id === prev)) return prev
+            let stored: string | null = null
+            try {
+              stored = localStorage.getItem(STORAGE_KEY)
+            } catch {
+              // localStorage unavailable
+            }
+            const valid = stored && list.some((a) => a.id === stored)
+            return valid ? stored : list[0].id
+          })
+        }
       } else {
         setAccounts([])
         setSelectedAccountIdState(null)
@@ -85,7 +101,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   return (
     <AccountContext.Provider
-      value={{ accounts, selectedAccountId, selectedAccount, setSelectedAccountId, refreshAccounts, loading }}
+      value={{ accounts, selectedAccountId, selectedAccount, setSelectedAccountId, refreshAccounts, loading, isScoped }}
     >
       {children}
     </AccountContext.Provider>

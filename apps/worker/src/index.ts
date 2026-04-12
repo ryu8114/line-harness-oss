@@ -10,6 +10,7 @@ import { refreshLineAccessTokens } from './services/token-refresh.js';
 import { processInsightFetch } from './services/insight-fetcher.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
+import { requireTenant } from './middleware/tenant.js';
 import { webhook } from './routes/webhook.js';
 import { friends } from './routes/friends.js';
 import { tags } from './routes/tags.js';
@@ -61,7 +62,8 @@ export type Env = {
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
   };
   Variables: {
-    staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
+    staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff'; lineAccountId: string | null };
+    resolvedLineAccountId: string | null;
   };
 };
 
@@ -75,6 +77,9 @@ app.use('*', rateLimitMiddleware);
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
+
+// Tenant middleware — resolves and enforces line_account_id scoping for admin/staff
+app.use('/api/*', requireTenant);
 
 // Mount route groups — MVP & Round 2
 app.route('/', webhook);

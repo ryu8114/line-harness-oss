@@ -47,10 +47,15 @@ async function fetchBotProfile(accessToken: string): Promise<{ displayName?: str
 }
 
 // GET /api/line-accounts - list all (with LINE profile + stats)
+// admin/staff は自院のみ返す
 lineAccounts.get('/api/line-accounts', async (c) => {
   try {
     const db = c.env.DB;
-    const items = await getLineAccounts(db);
+    const staff = c.get('staff');
+    let items = await getLineAccounts(db);
+    if (staff && staff.role !== 'owner' && staff.lineAccountId) {
+      items = items.filter((a) => a.id === staff.lineAccountId);
+    }
 
     // Get stats for all accounts in parallel
     const results = await Promise.all(
@@ -90,7 +95,7 @@ lineAccounts.get('/api/line-accounts', async (c) => {
   }
 });
 
-// GET /api/line-accounts/:id - get single (secrets only for owner/admin)
+// GET /api/line-accounts/:id - get single (secrets only for owner/admin, admin/staff limited to own account)
 lineAccounts.get('/api/line-accounts/:id', async (c) => {
   try {
     const account = await getLineAccountById(c.env.DB, c.req.param('id'));
@@ -98,6 +103,10 @@ lineAccounts.get('/api/line-accounts/:id', async (c) => {
       return c.json({ success: false, error: 'LINE account not found' }, 404);
     }
     const staff = c.get('staff');
+    // admin/staff は自院以外へのアクセスを拒否（チャンネルシークレット漏洩防止）
+    if (staff && staff.role !== 'owner' && staff.lineAccountId && account.id !== staff.lineAccountId) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const data = staff?.role === 'staff'
       ? serializeLineAccount(account)
       : serializeLineAccountFull(account);

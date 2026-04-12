@@ -19,6 +19,7 @@ import type {
   ScenarioTriggerType,
   MessageType,
 } from '@line-crm/db';
+import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
 
 const scenarios = new Hono<Env>();
@@ -70,7 +71,7 @@ function serializeFriendScenario(row: DbFriendScenario) {
 // GET /api/scenarios - list all
 scenarios.get('/api/scenarios', async (c) => {
   try {
-    const lineAccountId = c.req.query('lineAccountId');
+    const lineAccountId = c.get('resolvedLineAccountId') ?? c.req.query('lineAccountId');
     let items: DbScenarioWithStepCount[];
     if (lineAccountId) {
       const result = await c.env.DB
@@ -111,6 +112,11 @@ scenarios.get('/api/scenarios/:id', async (c) => {
       return c.json({ success: false, error: 'Scenario not found' }, 404);
     }
 
+    const scenarioR = scenario as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (scenarioR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
+
     return c.json({
       success: true,
       data: {
@@ -140,6 +146,10 @@ scenarios.post('/api/scenarios', async (c) => {
       return c.json({ success: false, error: 'name and triggerType are required' }, 400);
     }
 
+    const staff = c.get('staff');
+    // admin/staff は body の lineAccountId を無視して自院IDを使う
+    const resolvedAccountId = staff.role !== 'owner' ? staff.lineAccountId : (body.lineAccountId ?? null);
+
     let scenario = await createScenario(c.env.DB, {
       name: body.name,
       description: body.description ?? null,
@@ -148,9 +158,9 @@ scenarios.post('/api/scenarios', async (c) => {
     });
 
     // Save line_account_id if provided
-    if (body.lineAccountId) {
+    if (resolvedAccountId) {
       await c.env.DB.prepare(`UPDATE scenarios SET line_account_id = ? WHERE id = ?`)
-        .bind(body.lineAccountId, scenario.id).run();
+        .bind(resolvedAccountId, scenario.id).run();
     }
 
     // createScenario() always sets is_active=1; override if the caller requested inactive
@@ -170,6 +180,12 @@ scenarios.post('/api/scenarios', async (c) => {
 scenarios.put('/api/scenarios/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existingScenario = await getScenarioById(c.env.DB, id);
+    if (!existingScenario) return c.json({ success: false, error: 'Scenario not found' }, 404);
+    const existingR = existingScenario as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const body = await c.req.json<{
       name?: string;
       description?: string | null;
@@ -201,6 +217,12 @@ scenarios.put('/api/scenarios/:id', async (c) => {
 scenarios.delete('/api/scenarios/:id', async (c) => {
   try {
     const id = c.req.param('id');
+    const existing = await getScenarioById(c.env.DB, id);
+    if (!existing) return c.json({ success: false, error: 'Scenario not found' }, 404);
+    const existingRd = existing as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (existingRd.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     await deleteScenario(c.env.DB, id);
     return c.json({ success: true, data: null });
   } catch (err) {
@@ -213,6 +235,12 @@ scenarios.delete('/api/scenarios/:id', async (c) => {
 scenarios.post('/api/scenarios/:id/steps', async (c) => {
   try {
     const scenarioId = c.req.param('id');
+    const parentScenario = await getScenarioById(c.env.DB, scenarioId);
+    if (!parentScenario) return c.json({ success: false, error: 'Scenario not found' }, 404);
+    const parentR = parentScenario as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (parentR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const body = await c.req.json<{
       stepOrder: number;
       delayMinutes?: number;
@@ -251,7 +279,21 @@ scenarios.post('/api/scenarios/:id/steps', async (c) => {
 // PUT /api/scenarios/:id/steps/:stepId - update step (accepts camelCase)
 scenarios.put('/api/scenarios/:id/steps/:stepId', async (c) => {
   try {
+    const scenarioId = c.req.param('id');
+    const parentScenarioPut = await getScenarioById(c.env.DB, scenarioId);
+    if (!parentScenarioPut) return c.json({ success: false, error: 'Scenario not found' }, 404);
+    const parentPutR = parentScenarioPut as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (parentPutR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const stepId = c.req.param('stepId');
+    const stepToUpdate = await c.env.DB
+      .prepare(`SELECT scenario_id FROM scenario_steps WHERE id = ?`)
+      .bind(stepId)
+      .first<{ scenario_id: string }>();
+    if (!stepToUpdate || stepToUpdate.scenario_id !== scenarioId) {
+      return c.json({ success: false, error: 'Step not found' }, 404);
+    }
     const body = await c.req.json<{
       stepOrder?: number;
       delayMinutes?: number;
@@ -286,7 +328,21 @@ scenarios.put('/api/scenarios/:id/steps/:stepId', async (c) => {
 // DELETE /api/scenarios/:id/steps/:stepId - delete step
 scenarios.delete('/api/scenarios/:id/steps/:stepId', async (c) => {
   try {
+    const scenarioIdDel = c.req.param('id');
+    const parentScenarioDel = await getScenarioById(c.env.DB, scenarioIdDel);
+    if (!parentScenarioDel) return c.json({ success: false, error: 'Scenario not found' }, 404);
+    const parentDelR = parentScenarioDel as unknown as Record<string, unknown>;
+    if (!checkOwnership(c.get('staff'), (parentDelR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const stepId = c.req.param('stepId');
+    const stepToDel = await c.env.DB
+      .prepare(`SELECT scenario_id FROM scenario_steps WHERE id = ?`)
+      .bind(stepId)
+      .first<{ scenario_id: string }>();
+    if (!stepToDel || stepToDel.scenario_id !== scenarioIdDel) {
+      return c.json({ success: false, error: 'Step not found' }, 404);
+    }
     await deleteScenarioStep(c.env.DB, stepId);
     return c.json({ success: true, data: null });
   } catch (err) {
@@ -313,6 +369,16 @@ scenarios.post('/api/scenarios/:id/enroll/:friendId', async (c) => {
     }
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
+    }
+
+    const staff = c.get('staff');
+    const scenarioR = scenario as unknown as Record<string, unknown>;
+    if (!checkOwnership(staff, (scenarioR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
+    const friendR = friend as unknown as Record<string, unknown>;
+    if (!checkOwnership(staff, (friendR.line_account_id as string | null) ?? null)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
 
     const enrollment = await enrollFriendInScenario(db, friendId, scenarioId);

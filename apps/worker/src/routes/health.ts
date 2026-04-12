@@ -8,6 +8,7 @@ import {
   updateAccountMigration,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
+import { checkOwnership } from '../middleware/tenant.js';
 
 const health = new Hono<Env>();
 
@@ -16,6 +17,9 @@ const health = new Hono<Env>();
 health.get('/api/accounts/:id/health', async (c) => {
   try {
     const lineAccountId = c.req.param('id');
+    if (!checkOwnership(c.get('staff'), lineAccountId)) {
+      return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+    }
     const [riskLevel, logs] = await Promise.all([
       getLatestRiskLevel(c.env.DB, lineAccountId),
       getAccountHealthLogs(c.env.DB, lineAccountId),
