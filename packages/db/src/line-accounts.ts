@@ -23,6 +23,8 @@ export interface LineAccount {
   max_booking_days: number;
   slot_unit: number;
   plan: string;
+  // Admin rich menu (023_admin_rich_menu)
+  admin_rich_menu_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -80,7 +82,7 @@ export async function getLineAccountByChannelId(
 }
 
 export type UpdateLineAccountInput = Partial<
-  Pick<LineAccount, 'name' | 'channel_access_token' | 'channel_secret' | 'is_active' | 'token_expires_at'>
+  Pick<LineAccount, 'name' | 'channel_access_token' | 'channel_secret' | 'is_active' | 'token_expires_at' | 'admin_line_user_id' | 'admin_rich_menu_id'>
 >;
 
 export async function updateLineAccount(
@@ -110,6 +112,14 @@ export async function updateLineAccount(
   if (updates.token_expires_at !== undefined) {
     fields.push('token_expires_at = ?');
     values.push(updates.token_expires_at);
+  }
+  if (updates.admin_line_user_id !== undefined) {
+    fields.push('admin_line_user_id = ?');
+    values.push(updates.admin_line_user_id);
+  }
+  if (updates.admin_rich_menu_id !== undefined) {
+    fields.push('admin_rich_menu_id = ?');
+    values.push(updates.admin_rich_menu_id);
   }
 
   if (fields.length === 0) return getLineAccountById(db, id);

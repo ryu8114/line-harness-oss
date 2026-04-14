@@ -25,6 +25,7 @@ export * from './staff';
 export * from './auto-replies';
 export * from './traffic-pools';
 export * from './booking';
+export * from './admin-link-token';
 
 /**
  * Thin wrapper around D1Database.

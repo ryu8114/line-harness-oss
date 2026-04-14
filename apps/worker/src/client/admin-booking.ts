@@ -173,12 +173,18 @@ function renderDetail(app: HTMLElement, booking: Booking): void {
 
 // ========== API呼び出し ==========
 
+function buildApiUrl(base: string): string {
+  const lineAccountId = new URLSearchParams(window.location.search).get('line_account_id');
+  if (lineAccountId) return `${base}?line_account_id=${encodeURIComponent(lineAccountId)}`;
+  return base;
+}
+
 async function fetchTodayBookings(): Promise<void> {
   try {
     const headers: Record<string, string> = {};
     if (state.idToken) headers['X-LIFF-ID-Token'] = state.idToken;
 
-    const res = await fetch('/api/public/admin-liff/today', { headers });
+    const res = await fetch(buildApiUrl('/api/public/admin-liff/today'), { headers });
     if (res.status === 401) {
       state.errorMessage = '認証に失敗しました。院長アカウントでLINEにログインしているか確認してください。';
       state.loading = false;

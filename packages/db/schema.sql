@@ -197,14 +197,39 @@ CREATE INDEX IF NOT EXISTS idx_users_external_id ON users (external_id);
 -- Round 2: LINE Account Management (Multi-Account)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS line_accounts (
-  id                   TEXT PRIMARY KEY,
-  channel_id           TEXT NOT NULL UNIQUE,
-  name                 TEXT NOT NULL,
-  channel_access_token TEXT NOT NULL,
-  channel_secret       TEXT NOT NULL,
-  is_active            INTEGER NOT NULL DEFAULT 1,
-  created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
-  updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+  id                            TEXT PRIMARY KEY,
+  channel_id                    TEXT NOT NULL UNIQUE,
+  name                          TEXT NOT NULL,
+  channel_access_token          TEXT NOT NULL,
+  channel_secret                TEXT NOT NULL,
+  login_channel_id              TEXT,
+  login_channel_secret          TEXT,
+  liff_id                       TEXT,
+  is_active                     INTEGER NOT NULL DEFAULT 1,
+  token_expires_at              TEXT,
+  -- Booking system columns (018_booking_system)
+  admin_line_user_id            TEXT,
+  liff_id_admin                 TEXT,
+  google_calendar_connection_id TEXT,
+  booking_enabled               INTEGER NOT NULL DEFAULT 0,
+  min_booking_hours             INTEGER NOT NULL DEFAULT 2,
+  max_booking_days              INTEGER NOT NULL DEFAULT 30,
+  slot_unit                     INTEGER NOT NULL DEFAULT 30,
+  plan                          TEXT NOT NULL DEFAULT 'free',
+  -- Admin rich menu (023_admin_rich_menu)
+  admin_rich_menu_id            TEXT,
+  created_at                    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at                    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+-- Admin link tokens (023_admin_rich_menu)
+CREATE TABLE IF NOT EXISTS admin_link_tokens (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL REFERENCES line_accounts(id),
+  token           TEXT NOT NULL UNIQUE,
+  used_at         TEXT,
+  expires_at      TEXT NOT NULL,
+  created_at      TEXT NOT NULL
 );
 
 -- ============================================================

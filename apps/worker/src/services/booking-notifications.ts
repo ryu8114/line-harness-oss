@@ -192,7 +192,7 @@ async function getOrCreateBookingReminderMaster(
 
 // ---- ユーティリティ --------------------------------------------------------
 
-function formatDateJa(isoString: string): string {
+export function formatDateJa(isoString: string): string {
   // isoString は "2026-04-14T10:00:00+09:00" 形式（JST）
   // getDate()/getDay() はランタイムのローカル時刻（Workers = UTC）を使うため、
   // UTC正午を使ってUTCメソッドで曜日・日付を取得する
@@ -203,7 +203,7 @@ function formatDateJa(isoString: string): string {
   return `${year}年${month}月${day}日(${weekdays[d.getUTCDay()]})`;
 }
 
-function formatTime(isoString: string): string {
+export function formatTime(isoString: string): string {
   // isoString は "2026-04-14T10:00:00+09:00" 形式（JST）
   // getHours() はUTCになるため、文字列から直接スライスする
   return isoString.slice(11, 16); // "10:00"

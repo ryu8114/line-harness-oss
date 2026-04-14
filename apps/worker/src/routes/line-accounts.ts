@@ -29,6 +29,7 @@ function serializeLineAccountFull(row: DbLineAccount) {
     ...serializeLineAccount(row),
     channelAccessToken: row.channel_access_token,
     channelSecret: row.channel_secret,
+    adminRichMenuId: row.admin_rich_menu_id,
   };
 }
 
@@ -151,6 +152,7 @@ lineAccounts.put('/api/line-accounts/:id', requireRole('system_admin'), async (c
       channelAccessToken?: string;
       channelSecret?: string;
       isActive?: boolean;
+      adminRichMenuId?: string | null;
     }>();
 
     const updated = await updateLineAccount(c.env.DB, id, {
@@ -158,6 +160,7 @@ lineAccounts.put('/api/line-accounts/:id', requireRole('system_admin'), async (c
       channel_access_token: body.channelAccessToken,
       channel_secret: body.channelSecret,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
+      admin_rich_menu_id: body.adminRichMenuId,
     });
 
     if (!updated) {

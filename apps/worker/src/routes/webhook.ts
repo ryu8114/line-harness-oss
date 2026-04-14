@@ -12,10 +12,12 @@ import {
   completeFriendScenario,
   upsertChatOnMessage,
   getLineAccounts,
+  getLineAccountById,
   jstNow,
 } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
 import { buildMessage, expandVariables } from '../services/step-delivery.js';
+import { handleAdminPostback } from '../services/admin-postback.js';
 import type { Env } from '../index.js';
 
 const webhook = new Hono<Env>();
@@ -185,6 +187,19 @@ async function handleEvent(
 
     // イベントバス発火: friend_add（replyToken は Step 0 で使用済みの可能性あり）
     await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name } }, lineAccessToken, lineAccountId);
+
+    // 院長用リッチメニュー自動適用
+    if (lineAccountId) {
+      try {
+        const account = await getLineAccountById(db, lineAccountId);
+        if (account?.admin_line_user_id === userId && account.admin_rich_menu_id) {
+          await lineClient.linkRichMenuToUser(userId, account.admin_rich_menu_id);
+        }
+      } catch (err) {
+        console.error('Failed to assign admin rich menu on follow:', err);
+      }
+    }
+
     return;
   }
 
@@ -203,10 +218,25 @@ async function handleEvent(
     const userId = event.source.type === 'user' ? event.source.userId : undefined;
     if (!userId) return;
 
+    const postbackData = (event as unknown as { postback: { data: string } }).postback.data;
+
+    // 院長リッチメニューの postback（friends レコード不要）
+    if (postbackData.startsWith('action=admin_')) {
+      if (lineAccountId) {
+        try {
+          const account = await getLineAccountById(db, lineAccountId);
+          if (account?.admin_line_user_id === userId) {
+            await handleAdminPostback(db, lineClient, event.replyToken, postbackData, lineAccountId);
+          }
+        } catch (err) {
+          console.error('Admin postback error:', err);
+        }
+      }
+      return;
+    }
+
     const friend = await getFriendByLineUserId(db, userId);
     if (!friend) return;
-
-    const postbackData = (event as unknown as { postback: { data: string } }).postback.data;
 
     // Match postback data against auto_replies (exact match on keyword)
     const autoReplyQuery = lineAccountId
