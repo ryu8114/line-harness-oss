@@ -8,6 +8,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('redirect') || '/'
 
   const handleLoginWithKey = async (key: string) => {
     setLoading(true)
@@ -41,7 +42,7 @@ function LoginForm() {
         } catch {
           // Profile fetch is best-effort
         }
-        router.push('/')
+        router.push(redirectTo)
       } else {
         setError('APIキーが正しくありません')
       }
@@ -52,7 +53,7 @@ function LoginForm() {
     }
   }
 
-  // URL の ?key= パラメータで自動ログイン
+  // URL の ?key= パラメータで自動ログイン、?redirect= でログイン後の遷移先を指定
   useEffect(() => {
     const urlKey = searchParams.get('key')
     if (urlKey) {

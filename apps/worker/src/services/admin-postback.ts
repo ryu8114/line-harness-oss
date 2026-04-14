@@ -26,6 +26,9 @@ export async function handleAdminPostback(
     case 'admin_today_bookings':
       await replyTodayBookings(db, lineClient, replyToken, lineAccountId);
       break;
+    case 'admin_tomorrow_bookings':
+      await replyTomorrowBookings(db, lineClient, replyToken, lineAccountId);
+      break;
     case 'admin_booking_detail': {
       const bookingId = params.get('id');
       if (bookingId) {
@@ -38,32 +41,32 @@ export async function handleAdminPostback(
   }
 }
 
-/** 今日の予約一覧を Flex Message で返す */
-async function replyTodayBookings(
+/** 指定日の予約一覧を Flex Message で返す（共通処理） */
+async function replyBookingsByDate(
   db: D1Database,
   lineClient: LineClient,
   replyToken: string,
+  targetDate: string,     // "YYYY-MM-DD" (JST)
+  headerLabel: string,    // Flex ヘッダに出すテキスト（例: "今日の予約"）
+  emptyDayLabel: string,  // 0件メッセージ用（例: "本日" / "明日"）
   lineAccountId: string,
 ): Promise<void> {
-  // 今日（JST）の範囲を計算
-  const now = new Date();
-  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const today = jstNow.toISOString().slice(0, 10);
-  const from = `${today}T00:00:00+09:00`;
-  const to = `${today}T23:59:59+09:00`;
+  const from = `${targetDate}T00:00:00+09:00`;
+  const to = `${targetDate}T23:59:59+09:00`;
 
   const allBookings = await getBookingsByAccount(db, lineAccountId, { from, to });
   const confirmed = allBookings.filter(b => b.status !== 'cancelled');
   const truncated = confirmed.length > MAX_BOOKINGS_DISPLAY;
   const bookings = truncated ? confirmed.slice(0, MAX_BOOKINGS_DISPLAY) : confirmed;
 
-  const jstDate = jstNow;
+  // targetDate から曜日を計算（UTC 正午ベースで JSTずれなし）
+  const dateObj = new Date(`${targetDate}T12:00:00Z`);
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-  const dateLabel = `${jstDate.getUTCMonth() + 1}月${jstDate.getUTCDate()}日(${weekdays[jstDate.getUTCDay()]})`;
+  const dateLabel = `${dateObj.getUTCMonth() + 1}月${dateObj.getUTCDate()}日(${weekdays[dateObj.getUTCDay()]})`;
 
   if (bookings.length === 0) {
     await lineClient.replyMessage(replyToken, [
-      { type: 'text', text: `【今日の予約】${dateLabel}\n\n本日の予約はありません。` },
+      { type: 'text', text: `【${headerLabel}】${dateLabel}\n\n${emptyDayLabel}の予約はありません。` },
     ]);
     return;
   }
@@ -102,7 +105,7 @@ async function replyTodayBookings(
 
   const bubble = flexBubble({
     header: flexBox('vertical', [
-      flexText('今日の予約', { weight: 'bold', size: 'lg' }),
+      flexText(headerLabel, { weight: 'bold', size: 'lg' }),
       flexText(`${dateLabel}（${confirmed.length}件）`, { size: 'sm', color: '#888888' }),
     ], { backgroundColor: '#f5f5f5', paddingAll: 'md' }),
     body: flexBox('vertical', bookingItems, { spacing: 'none' }),
@@ -111,10 +114,40 @@ async function replyTodayBookings(
   await lineClient.replyMessage(replyToken, [
     {
       type: 'flex',
-      altText: `今日の予約 ${dateLabel}（${confirmed.length}件）`,
+      altText: `${headerLabel} ${dateLabel}（${confirmed.length}件）`,
       contents: bubble,
     },
   ]);
+}
+
+/** 今日の予約一覧を Flex Message で返す */
+async function replyTodayBookings(
+  db: D1Database,
+  lineClient: LineClient,
+  replyToken: string,
+  lineAccountId: string,
+): Promise<void> {
+  const now = new Date();
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const today = jstNow.toISOString().slice(0, 10);
+  await replyBookingsByDate(db, lineClient, replyToken, today, '今日の予約', '本日', lineAccountId);
+}
+
+/** 明日の予約一覧を Flex Message で返す */
+async function replyTomorrowBookings(
+  db: D1Database,
+  lineClient: LineClient,
+  replyToken: string,
+  lineAccountId: string,
+): Promise<void> {
+  // UTC 正午ベースで +1 日して JST 日付ずれを回避
+  const now = new Date();
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const todayStr = jstNow.toISOString().slice(0, 10);
+  const noon = new Date(`${todayStr}T12:00:00Z`);
+  noon.setUTCDate(noon.getUTCDate() + 1);
+  const tomorrow = noon.toISOString().slice(0, 10);
+  await replyBookingsByDate(db, lineClient, replyToken, tomorrow, '明日の予約', '明日', lineAccountId);
 }
 
 /** 予約詳細を Flex Message で返す */
