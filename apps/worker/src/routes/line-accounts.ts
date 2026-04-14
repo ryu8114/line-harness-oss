@@ -30,6 +30,9 @@ function serializeLineAccountFull(row: DbLineAccount) {
     channelAccessToken: row.channel_access_token,
     channelSecret: row.channel_secret,
     adminRichMenuId: row.admin_rich_menu_id,
+    cancelDeadlineHours: row.cancel_deadline_hours,
+    shopInfo: row.shop_info,
+    customerRichMenuId: row.customer_rich_menu_id,
   };
 }
 

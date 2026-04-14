@@ -119,75 +119,164 @@ export async function registerBookingReminder(
   friendId: string,
   bookingDate: string,  // "YYYY-MM-DD"
   booking: BookingRow,
+  lineAccountId: string,
 ): Promise<void> {
   try {
-    // 院の「予約前日リマインド」マスタを取得or作成
-    const reminderId = await getOrCreateBookingReminderMaster(db, booking);
+    // H3: lineAccountId でスコープした「予約前日リマインド」マスタを取得or作成
+    const reminderId = await getOrCreateBookingReminderMaster(db, lineAccountId);
     if (!reminderId) return;
 
-    // friend_reminders に登録
+    // friend_reminders に登録（booking_id を紐付けて同日複数予約での誤更新を防ぐ）
     await enrollFriendInReminder(db, {
       friendId,
       reminderId,
       targetDate: `${bookingDate}T00:00:00+09:00`,
+      bookingId: booking.id,
     });
   } catch (err) {
     console.warn('リマインド登録エラー:', err);
   }
 }
 
-/** 「予約前日リマインド」マスタのIDを取得、なければ作成 */
+/**
+ * テナント（lineAccountId）スコープの「予約前日リマインド」マスタを取得または作成。
+ * H3 対策: 名前に lineAccountId を含めることでテナント間の混用を防ぐ。
+ * メッセージは汎用テキストにし、特定予約の時刻をハードコードしない。
+ */
 async function getOrCreateBookingReminderMaster(
   db: D1Database,
-  booking: BookingRow,
+  lineAccountId: string,
 ): Promise<string | null> {
-  // 既存のリマインダーから「予約前日リマインド」を探す
+  // テナント固有の名前で既存リマインダーを検索
+  const tenantReminderName = `${BOOKING_REMINDER_NAME}_${lineAccountId}`;
   const allReminders = await getReminders(db);
-  let reminder = allReminders.find((r) => r.name === BOOKING_REMINDER_NAME && r.is_active);
+  let reminder = allReminders.find((r) => r.name === tenantReminderName && r.is_active);
 
   if (!reminder) {
-    // 新規作成
+    // 新規作成（汎用メッセージ）
     reminder = await createReminder(db, {
-      name: BOOKING_REMINDER_NAME,
+      name: tenantReminderName,
       description: '予約日の前日18:00に送信するリマインドメッセージ',
     });
-
-    // ステップ追加: offset_minutes = -360 (前日18:00 = 予約日0:00の6時間前)
-    const startTime = formatTime(booking.start_at);
-    const endTime = formatTime(booking.end_at);
-    const menuName = booking.menu_name_snapshot || '';
-
-    const messageContent = [
-      `【明日のご予約リマインド】`,
-      `${menuName}`,
-      `${startTime}〜${endTime}`,
-      ``,
-      `お気をつけてお越しください。`,
-    ].filter(Boolean).join('\n');
 
     await createReminderStep(db, {
       reminderId: reminder.id,
       offsetMinutes: -360,  // 前日18:00
       messageType: 'text',
-      messageContent,
+      messageContent: ['【明日のご予約リマインド】', 'お気をつけてお越しください。'].join('\n'),
     });
   } else {
     // 既存リマインダーのステップが空なら追加
     const steps = await getReminderSteps(db, reminder.id);
     if (steps.length === 0) {
-      const startTime = formatTime(booking.start_at);
-      const endTime = formatTime(booking.end_at);
-      const menuName = booking.menu_name_snapshot || '';
       await createReminderStep(db, {
         reminderId: reminder.id,
         offsetMinutes: -360,
         messageType: 'text',
-        messageContent: [`【明日のご予約リマインド】`, menuName, `${startTime}〜${endTime}`, `お気をつけてお越しください。`].join('\n'),
+        messageContent: ['【明日のご予約リマインド】', 'お気をつけてお越しください。'].join('\n'),
       });
     }
   }
 
   return reminder.id;
+}
+
+/** 院長に予約キャンセルを通知する */
+export async function notifyAdminBookingCancelled(
+  db: D1Database,
+  accessToken: string,
+  adminLineUserId: string,
+  booking: BookingRow,
+  lineAccountId?: string,
+): Promise<void> {
+  try {
+    await fireEvent(
+      db,
+      'booking_cancelled',
+      {
+        eventData: {
+          bookingId: booking.id,
+          menuName: booking.menu_name_snapshot,
+          startAt: booking.start_at,
+          customerName: booking.customer_name,
+        },
+      },
+      accessToken,
+      lineAccountId,
+    );
+  } catch (err) {
+    console.warn('booking_cancelled イベント発火エラー:', err);
+  }
+
+  try {
+    const lineClient = new LineClient(accessToken);
+    const startDate = formatDateJa(booking.start_at);
+    const startTime = formatTime(booking.start_at);
+    const endTime = formatTime(booking.end_at);
+
+    const text = [
+      `【予約キャンセル】`,
+      `${booking.customer_name} 様`,
+      `${booking.menu_name_snapshot}`,
+      `${startDate} ${startTime}〜${endTime}`,
+    ].filter(Boolean).join('\n');
+
+    await lineClient.pushMessage(adminLineUserId, [{ type: 'text', text }]);
+  } catch (err) {
+    console.warn('院長へのキャンセル通知エラー:', err);
+  }
+}
+
+/** 院長に予約日時変更を通知する */
+export async function notifyAdminBookingRescheduled(
+  db: D1Database,
+  accessToken: string,
+  adminLineUserId: string,
+  oldBooking: BookingRow,
+  newBooking: BookingRow,
+  lineAccountId?: string,
+): Promise<void> {
+  try {
+    await fireEvent(
+      db,
+      'booking_rescheduled',
+      {
+        eventData: {
+          bookingId: newBooking.id,
+          menuName: newBooking.menu_name_snapshot,
+          oldStartAt: oldBooking.start_at,
+          newStartAt: newBooking.start_at,
+          customerName: newBooking.customer_name,
+        },
+      },
+      accessToken,
+      lineAccountId,
+    );
+  } catch (err) {
+    console.warn('booking_rescheduled イベント発火エラー:', err);
+  }
+
+  try {
+    const lineClient = new LineClient(accessToken);
+    const oldDate = formatDateJa(oldBooking.start_at);
+    const oldStart = formatTime(oldBooking.start_at);
+    const oldEnd = formatTime(oldBooking.end_at);
+    const newDate = formatDateJa(newBooking.start_at);
+    const newStart = formatTime(newBooking.start_at);
+    const newEnd = formatTime(newBooking.end_at);
+
+    const text = [
+      `【予約変更】`,
+      `${newBooking.customer_name} 様`,
+      `${newBooking.menu_name_snapshot}`,
+      `変更前: ${oldDate} ${oldStart}〜${oldEnd}`,
+      `変更後: ${newDate} ${newStart}〜${newEnd}`,
+    ].filter(Boolean).join('\n');
+
+    await lineClient.pushMessage(adminLineUserId, [{ type: 'text', text }]);
+  } catch (err) {
+    console.warn('院長への日時変更通知エラー:', err);
+  }
 }
 
 // ---- ユーティリティ --------------------------------------------------------

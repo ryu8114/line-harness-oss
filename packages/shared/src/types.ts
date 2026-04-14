@@ -284,6 +284,12 @@ export interface LineAccount {
   channelSecret: string;
   /** 有効/無効 */
   isActive: boolean;
+  /** キャンセル期限（何時間前まで）*/
+  cancelDeadlineHours: number;
+  /** 店舗情報 JSON 文字列 */
+  shopInfo: string | null;
+  /** 顧客用リッチメニューID */
+  customerRichMenuId: string | null;
   /** 作成日時 (ISO 8601) */
   createdAt: string;
   /** 更新日時 (ISO 8601) */

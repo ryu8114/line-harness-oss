@@ -219,16 +219,26 @@ export interface CreateBookingInput {
   customerNote?: string;
 }
 
-export async function createBooking(db: D1Database, input: CreateBookingInput): Promise<BookingRow> {
+/**
+ * 予約を作成する。
+ * CREATE-TOCTOU 対策: INSERT ... SELECT ... WHERE NOT EXISTS で競合チェックをアトミックに実施。
+ * 同時刻に confirmed 予約が存在する場合は null を返す（呼び出し元が 409 を返すこと）。
+ */
+export async function createBooking(db: D1Database, input: CreateBookingInput): Promise<BookingRow | null> {
   const id = crypto.randomUUID();
   const now = jstNow();
-  await db
+  const result = await db
     .prepare(
       `INSERT INTO calendar_bookings
          (id, connection_id, line_account_id, friend_id, title, start_at, end_at, status,
           menu_id, menu_name_snapshot, menu_duration_snapshot, menu_price_snapshot,
           customer_name, customer_phone, customer_note, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM calendar_bookings
+         WHERE line_account_id = ? AND status = 'confirmed'
+           AND start_at < ? AND end_at > ?
+       )`,
     )
     .bind(
       id, input.connectionId, input.lineAccountId, input.friendId ?? null, input.title,
@@ -236,8 +246,12 @@ export async function createBooking(db: D1Database, input: CreateBookingInput): 
       input.menuId, input.menuNameSnapshot, input.menuDurationSnapshot, input.menuPriceSnapshot ?? null,
       input.customerName, input.customerPhone ?? null, input.customerNote ?? null,
       now, now,
+      // NOT EXISTS 用パラメータ
+      input.lineAccountId, input.endAt, input.startAt,
     )
     .run();
+
+  if (result.meta.changes === 0) return null; // 競合により挿入されなかった
   return (await db.prepare(`SELECT * FROM calendar_bookings WHERE id = ?`).bind(id).first<BookingRow>())!;
 }
 
@@ -291,4 +305,76 @@ export async function updateBookingStatus(db: D1Database, id: string, status: st
 
 export async function updateBookingEventId(db: D1Database, id: string, eventId: string): Promise<void> {
   await db.prepare(`UPDATE calendar_bookings SET event_id = ?, updated_at = ? WHERE id = ?`).bind(eventId, jstNow(), id).run();
+}
+
+/** 顧客の予約一覧取得（lineAccountId でスコープ） */
+export async function getBookingsByFriendId(
+  db: D1Database,
+  friendId: string,
+  lineAccountId: string,
+  opts: { from?: string; to?: string; status?: string } = {},
+): Promise<BookingRow[]> {
+  const conditions = ['friend_id = ?', 'line_account_id = ?'];
+  const values: unknown[] = [friendId, lineAccountId];
+
+  if (opts.from) { conditions.push('start_at >= ?'); values.push(opts.from); }
+  if (opts.to) { conditions.push('start_at <= ?'); values.push(opts.to); }
+  if (opts.status) { conditions.push('status = ?'); values.push(opts.status); }
+
+  const result = await db
+    .prepare(`SELECT * FROM calendar_bookings WHERE ${conditions.join(' AND ')} ORDER BY start_at ASC`)
+    .bind(...values)
+    .all<BookingRow>();
+  return result.results;
+}
+
+/**
+ * 予約の日時を更新（confirmed のみ）。
+ * eventId を指定すると event_id も同時に更新。
+ * expectedEventId を指定すると楽観的ロック（WHERE event_id = ?）を適用し、
+ * 競合時（0行更新）は null を返す。
+ */
+export async function updateBookingSchedule(
+  db: D1Database,
+  id: string,
+  startAt: string,
+  endAt: string,
+  eventId?: string,
+  expectedEventId?: string | null,
+  conflictCheck?: { lineAccountId: string; startAt: string; endAt: string },
+): Promise<BookingRow | null> {
+  const fields = ['start_at = ?', 'end_at = ?', 'updated_at = ?'];
+  const values: unknown[] = [startAt, endAt, jstNow()];
+
+  if (eventId !== undefined) {
+    fields.push('event_id = ?');
+    values.push(eventId);
+  }
+
+  let sql = `UPDATE calendar_bookings SET ${fields.join(', ')} WHERE id = ? AND status = 'confirmed'`;
+  values.push(id);
+
+  // 楽観的ロック: null は IS NULL、文字列は = ? で比較
+  if (expectedEventId !== undefined) {
+    if (expectedEventId === null) {
+      sql += ' AND event_id IS NULL';
+    } else {
+      sql += ' AND event_id = ?';
+      values.push(expectedEventId);
+    }
+  }
+
+  // MEDIUM-2: 競合チェックをUPDATEと同一ステートメントでアトミックに実行
+  if (conflictCheck) {
+    sql += ` AND NOT EXISTS (
+      SELECT 1 FROM calendar_bookings
+      WHERE line_account_id = ? AND status = 'confirmed' AND id != ?
+        AND start_at < ? AND end_at > ?
+    )`;
+    values.push(conflictCheck.lineAccountId, id, conflictCheck.endAt, conflictCheck.startAt);
+  }
+
+  const result = await db.prepare(sql).bind(...values).run();
+  if (result.meta.changes === 0) return null;
+  return db.prepare(`SELECT * FROM calendar_bookings WHERE id = ?`).bind(id).first<BookingRow>();
 }

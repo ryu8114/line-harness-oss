@@ -18,6 +18,7 @@ import {
 import { fireEvent } from '../services/event-bus.js';
 import { buildMessage, expandVariables } from '../services/step-delivery.js';
 import { handleAdminPostback } from '../services/admin-postback.js';
+import { handleCustomerPostback } from '../services/customer-postback.js';
 import type { Env } from '../index.js';
 
 const webhook = new Hono<Env>();
@@ -230,6 +231,18 @@ async function handleEvent(
           }
         } catch (err) {
           console.error('Admin postback error:', err);
+        }
+      }
+      return;
+    }
+
+    // 顧客リッチメニューの postback（認証チェック不要）
+    if (postbackData.startsWith('action=customer_')) {
+      if (lineAccountId) {
+        try {
+          await handleCustomerPostback(db, lineClient, event.replyToken, postbackData, lineAccountId);
+        } catch (err) {
+          console.error('Customer postback error:', err);
         }
       }
       return;

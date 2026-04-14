@@ -24,6 +24,7 @@ export interface FriendReminderRow {
   friend_id: string;
   reminder_id: string;
   target_date: string;
+  booking_id: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -99,12 +100,13 @@ export async function deleteReminderStep(db: D1Database, id: string): Promise<vo
 
 export async function enrollFriendInReminder(
   db: D1Database,
-  input: { friendId: string; reminderId: string; targetDate: string },
+  input: { friendId: string; reminderId: string; targetDate: string; bookingId?: string },
 ): Promise<FriendReminderRow> {
   const id = crypto.randomUUID();
   const now = jstNow();
-  await db.prepare(`INSERT INTO friend_reminders (id, friend_id, reminder_id, target_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(id, input.friendId, input.reminderId, input.targetDate, now, now).run();
+  await db.prepare(
+    `INSERT INTO friend_reminders (id, friend_id, reminder_id, target_date, booking_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, input.friendId, input.reminderId, input.targetDate, input.bookingId ?? null, now, now).run();
   return (await db.prepare(`SELECT * FROM friend_reminders WHERE id = ?`).bind(id).first<FriendReminderRow>())!;
 }
 
@@ -117,6 +119,97 @@ export async function getFriendReminders(db: D1Database, friendId: string): Prom
 export async function cancelFriendReminder(db: D1Database, id: string): Promise<void> {
   await db.prepare(`UPDATE friend_reminders SET status = 'cancelled', updated_at = ? WHERE id = ?`)
     .bind(jstNow(), id).run();
+}
+
+/**
+ * booking_id でリマインダーをキャンセル。
+ * booking_id = NULL の既存行は fallback の friend_id + target_date で特定。
+ * フォールバック時に複数行マッチした場合は操作せず console.warn でログ。
+ */
+export async function cancelReminderByBookingId(
+  db: D1Database,
+  bookingId: string,
+  fallback?: { friendId: string; targetDate: string },
+): Promise<void> {
+  // まず booking_id で特定を試みる
+  const byBookingId = await db
+    .prepare(`SELECT id FROM friend_reminders WHERE booking_id = ? AND status = 'active'`)
+    .bind(bookingId)
+    .all<{ id: string }>();
+
+  if (byBookingId.results.length > 0) {
+    for (const row of byBookingId.results) {
+      await cancelFriendReminder(db, row.id);
+    }
+    return;
+  }
+
+  // フォールバック: friend_id + target_date で特定
+  if (!fallback) return;
+
+  // フォールバック: booking_id が NULL の行（024マイグレーション以前の古い行）のみ対象
+  const byFallback = await db
+    .prepare(`SELECT id FROM friend_reminders WHERE friend_id = ? AND target_date LIKE ? AND status = 'active' AND booking_id IS NULL`)
+    .bind(fallback.friendId, `${fallback.targetDate.slice(0, 10)}%`)
+    .all<{ id: string }>();
+
+  if (byFallback.results.length > 1) {
+    console.warn(`[cancelReminderByBookingId] 同日に複数のリマインダーが存在するためスキップ: friendId=${fallback.friendId} targetDate=${fallback.targetDate}`);
+    return;
+  }
+  if (byFallback.results.length === 1) {
+    await cancelFriendReminder(db, byFallback.results[0].id);
+  }
+}
+
+/**
+ * booking_id でリマインダーの target_date を更新。
+ * booking_id = NULL の既存行は fallback の friend_id + oldTargetDate で特定。
+ * フォールバック時に複数行マッチした場合は操作せず console.warn でログ。
+ */
+export async function updateReminderTargetDateByBookingId(
+  db: D1Database,
+  bookingId: string,
+  newTargetDate: string,
+  fallback?: { friendId: string; oldTargetDate: string },
+): Promise<void> {
+  const now = jstNow();
+
+  // まず booking_id で特定を試みる
+  const byBookingId = await db
+    .prepare(`SELECT id FROM friend_reminders WHERE booking_id = ? AND status = 'active'`)
+    .bind(bookingId)
+    .all<{ id: string }>();
+
+  if (byBookingId.results.length > 0) {
+    for (const row of byBookingId.results) {
+      await db
+        .prepare(`UPDATE friend_reminders SET target_date = ?, updated_at = ? WHERE id = ?`)
+        .bind(newTargetDate, now, row.id)
+        .run();
+    }
+    return;
+  }
+
+  // フォールバック: friend_id + oldTargetDate で特定
+  if (!fallback) return;
+
+  // フォールバック: booking_id が NULL の行（024マイグレーション以前の古い行）のみ対象
+  const byFallback = await db
+    .prepare(`SELECT id FROM friend_reminders WHERE friend_id = ? AND target_date LIKE ? AND status = 'active' AND booking_id IS NULL`)
+    .bind(fallback.friendId, `${fallback.oldTargetDate.slice(0, 10)}%`)
+    .all<{ id: string }>();
+
+  if (byFallback.results.length > 1) {
+    console.warn(`[updateReminderTargetDateByBookingId] 同日に複数のリマインダーが存在するためスキップ: friendId=${fallback.friendId} oldTargetDate=${fallback.oldTargetDate}`);
+    return;
+  }
+  if (byFallback.results.length === 1) {
+    await db
+      .prepare(`UPDATE friend_reminders SET target_date = ?, updated_at = ? WHERE id = ?`)
+      .bind(newTargetDate, now, byFallback.results[0].id)
+      .run();
+  }
 }
 
 /** リマインダ配信処理用: 配信が必要な友だちリマインダを取得 */

@@ -558,6 +558,10 @@ export const api = {
       fetchApi<{ success: boolean; data: Booking }>(`/api/booking/admin/bookings/${id}`),
     updateBookingStatus: (id: string, status: string) =>
       fetchApi<{ success: boolean; data: null }>(`/api/booking/admin/bookings/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    getSettings: () =>
+      fetchApi<{ success: boolean; data: BookingSettings }>('/api/booking/settings'),
+    updateSettings: (data: Partial<BookingSettings>) =>
+      fetchApi<{ success: boolean; data: BookingSettings }>('/api/booking/settings', { method: 'PUT', body: JSON.stringify(data) }),
   },
 }
 
@@ -600,6 +604,16 @@ export type ScheduleException = {
   closeTime: string | null
   note: string | null
   createdAt: string
+}
+
+export type BookingSettings = {
+  cancelDeadlineHours: number
+  shopInfo: {
+    address?: string
+    phone?: string
+    hours?: string
+    mapUrl?: string
+  } | null
 }
 
 export type Booking = {

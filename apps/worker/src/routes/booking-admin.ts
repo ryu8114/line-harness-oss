@@ -20,6 +20,8 @@ import {
   getBookingsByAccount,
   getBookingById,
   updateBookingStatus,
+  getLineAccountById,
+  updateLineAccount,
 } from '@line-crm/db';
 import { checkOwnership } from '../middleware/tenant.js';
 import type { Env } from '../index.js';
@@ -247,6 +249,15 @@ bookingAdmin.put('/api/booking/admin/bookings/:id', async (c) => {
   const { status } = await c.req.json<{ status: string }>();
   if (!status) return c.json({ success: false, error: 'status is required' }, 400);
 
+  // M6: status を許可された値のみに限定
+  const ALLOWED_STATUSES = ['confirmed', 'cancelled', 'pending'] as const;
+  if (!ALLOWED_STATUSES.includes(status as typeof ALLOWED_STATUSES[number])) {
+    return c.json({ success: false, error: 'status は confirmed, cancelled, pending のいずれかを指定してください' }, 400);
+  }
+
+  // M3: DB更新を先に行い、GCal削除はベストエフォートの副作用として後から実行
+  await updateBookingStatus(c.env.DB, id, status);
+
   // キャンセル時はGoogleカレンダーからも削除（ベストエフォート）
   if (status === 'cancelled' && booking.event_id) {
     try {
@@ -266,8 +277,87 @@ bookingAdmin.put('/api/booking/admin/bookings/:id', async (c) => {
     }
   }
 
-  await updateBookingStatus(c.env.DB, id, status);
   return c.json({ success: true, data: null });
+});
+
+// ---- 予約設定（キャンセル期限・店舗情報）-----------------------------------
+
+bookingAdmin.get('/api/booking/settings', async (c) => {
+  const lineAccountId = c.get('resolvedLineAccountId');
+  if (!lineAccountId) return c.json({ success: false, error: 'line_account_id が特定できません' }, 400);
+
+  const account = await getLineAccountById(c.env.DB, lineAccountId);
+  if (!account) return c.json({ success: false, error: 'Account not found' }, 404);
+  if (!checkOwnership(c.get('staff'), lineAccountId)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
+
+  let shopInfo: unknown = null;
+  if (account.shop_info) {
+    try {
+      shopInfo = JSON.parse(account.shop_info);
+    } catch {
+      shopInfo = null;
+    }
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      cancelDeadlineHours: account.cancel_deadline_hours,
+      shopInfo,
+    },
+  });
+});
+
+bookingAdmin.put('/api/booking/settings', async (c) => {
+  const lineAccountId = c.get('resolvedLineAccountId');
+  if (!lineAccountId) return c.json({ success: false, error: 'line_account_id が特定できません' }, 400);
+
+  const account = await getLineAccountById(c.env.DB, lineAccountId);
+  if (!account) return c.json({ success: false, error: 'Account not found' }, 404);
+  if (!checkOwnership(c.get('staff'), lineAccountId)) {
+    return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
+  }
+
+  const body = await c.req.json<{
+    cancelDeadlineHours?: number;
+    shopInfo?: { address?: string; phone?: string; hours?: string; mapUrl?: string } | null;
+  }>();
+
+  const updates: Parameters<typeof updateLineAccount>[2] = {};
+  if (body.cancelDeadlineHours !== undefined) {
+    if (typeof body.cancelDeadlineHours !== 'number' || body.cancelDeadlineHours < 0) {
+      return c.json({ success: false, error: 'cancelDeadlineHours は0以上の数値で指定してください' }, 400);
+    }
+    updates.cancel_deadline_hours = body.cancelDeadlineHours;
+  }
+  if ('shopInfo' in body) {
+    // M8: mapUrl は https:// から始まるURLのみ許可
+    if (body.shopInfo?.mapUrl && !body.shopInfo.mapUrl.startsWith('https://')) {
+      return c.json({ success: false, error: 'mapUrl は https:// から始まるURLを指定してください' }, 400);
+    }
+    updates.shop_info = body.shopInfo != null ? JSON.stringify(body.shopInfo) : null;
+  }
+
+  const updated = await updateLineAccount(c.env.DB, lineAccountId, updates);
+
+  let updatedShopInfo: unknown = null;
+  if (updated?.shop_info) {
+    try {
+      updatedShopInfo = JSON.parse(updated.shop_info);
+    } catch {
+      updatedShopInfo = null;
+    }
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      cancelDeadlineHours: updated?.cancel_deadline_hours,
+      shopInfo: updatedShopInfo,
+    },
+  });
 });
 
 export { bookingAdmin };

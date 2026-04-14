@@ -30,6 +30,17 @@ export interface SlotCalculatorOptions {
   minBookingHours?: number;
   /** 今日からN日先まで予約可能（デフォルト14） */
   maxBookingDays?: number;
+  /**
+   * リスケジュール時: この予約IDを既存予約の競合チェックから除外する。
+   * 自分自身の予約との重複で誤拒否されないようにするため。
+   */
+  excludeBookingId?: string;
+  /**
+   * リスケジュール時: このインターバルを Google FreeBusy チェックから除外する。
+   * 元予約のGCalイベントが FreeBusy に含まれることで誤拒否されないようにするため。
+   * start/end は ISO 8601 形式（タイムゾーン付き）。
+   */
+  excludeBusyInterval?: { start: string; end: string };
 }
 
 /**
@@ -134,23 +145,35 @@ export async function calculateSlots(
       }
     }
 
-    // c. 既存予約との重複チェック
-    const hasBookingConflict = existingBookings.some((b) => {
-      const bStart = new Date(b.start_at).getTime();
-      const bEnd = new Date(b.end_at).getTime();
-      return slotStartDate.getTime() < bEnd && slotEndDate.getTime() > bStart;
-    });
+    // c. 既存予約との重複チェック（excludeBookingId はリスケジュール時に自分自身を除外）
+    const hasBookingConflict = existingBookings
+      .filter((b) => opts.excludeBookingId === undefined || b.id !== opts.excludeBookingId)
+      .some((b) => {
+        const bStart = new Date(b.start_at).getTime();
+        const bEnd = new Date(b.end_at).getTime();
+        return slotStartDate.getTime() < bEnd && slotEndDate.getTime() > bStart;
+      });
     if (hasBookingConflict) {
       slots.push({ time: timeStr, available: false });
       continue;
     }
 
-    // d. Google FreeBusy との重複チェック
-    const hasGoogleConflict = googleBusy.some((interval) => {
-      const gStart = new Date(interval.start).getTime();
-      const gEnd = new Date(interval.end).getTime();
-      return slotStartDate.getTime() < gEnd && slotEndDate.getTime() > gStart;
-    });
+    // d. Google FreeBusy との重複チェック（元予約のインターバルは除外）
+    const excBusyStart = opts.excludeBusyInterval ? new Date(opts.excludeBusyInterval.start).getTime() : null;
+    const excBusyEnd   = opts.excludeBusyInterval ? new Date(opts.excludeBusyInterval.end).getTime()   : null;
+    const hasGoogleConflict = googleBusy
+      .filter((interval) => {
+        if (excBusyStart === null || excBusyEnd === null) return true;
+        const gStart = new Date(interval.start).getTime();
+        const gEnd   = new Date(interval.end).getTime();
+        // 元予約と完全に一致するインターバルを除外
+        return !(gStart === excBusyStart && gEnd === excBusyEnd);
+      })
+      .some((interval) => {
+        const gStart = new Date(interval.start).getTime();
+        const gEnd = new Date(interval.end).getTime();
+        return slotStartDate.getTime() < gEnd && slotEndDate.getTime() > gStart;
+      });
     if (hasGoogleConflict) {
       slots.push({ time: timeStr, available: false });
       continue;
@@ -264,11 +287,13 @@ async function calculateSlotsForDate(
         slots.push({ time: timeStr, available: false }); continue;
       }
     }
-    const hasConflict = existingBookings.some((b) => {
-      const bStart = new Date(b.start_at).getTime();
-      const bEnd = new Date(b.end_at).getTime();
-      return slotStartDate.getTime() < bEnd && slotEndDate.getTime() > bStart;
-    });
+    const hasConflict = existingBookings
+      .filter((b) => opts.excludeBookingId === undefined || b.id !== opts.excludeBookingId)
+      .some((b) => {
+        const bStart = new Date(b.start_at).getTime();
+        const bEnd = new Date(b.end_at).getTime();
+        return slotStartDate.getTime() < bEnd && slotEndDate.getTime() > bStart;
+      });
     slots.push({ time: timeStr, available: !hasConflict });
   }
 

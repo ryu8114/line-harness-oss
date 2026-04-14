@@ -25,6 +25,10 @@ export interface LineAccount {
   plan: string;
   // Admin rich menu (023_admin_rich_menu)
   admin_rich_menu_id: string | null;
+  // Customer booking (024_customer_booking)
+  cancel_deadline_hours: number;
+  shop_info: string | null;
+  customer_rich_menu_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,7 +86,7 @@ export async function getLineAccountByChannelId(
 }
 
 export type UpdateLineAccountInput = Partial<
-  Pick<LineAccount, 'name' | 'channel_access_token' | 'channel_secret' | 'is_active' | 'token_expires_at' | 'admin_line_user_id' | 'admin_rich_menu_id'>
+  Pick<LineAccount, 'name' | 'channel_access_token' | 'channel_secret' | 'is_active' | 'token_expires_at' | 'admin_line_user_id' | 'admin_rich_menu_id' | 'cancel_deadline_hours' | 'shop_info' | 'customer_rich_menu_id'>
 >;
 
 export async function updateLineAccount(
@@ -120,6 +124,18 @@ export async function updateLineAccount(
   if (updates.admin_rich_menu_id !== undefined) {
     fields.push('admin_rich_menu_id = ?');
     values.push(updates.admin_rich_menu_id);
+  }
+  if (updates.cancel_deadline_hours !== undefined) {
+    fields.push('cancel_deadline_hours = ?');
+    values.push(updates.cancel_deadline_hours);
+  }
+  if (updates.shop_info !== undefined) {
+    fields.push('shop_info = ?');
+    values.push(updates.shop_info);
+  }
+  if (updates.customer_rich_menu_id !== undefined) {
+    fields.push('customer_rich_menu_id = ?');
+    values.push(updates.customer_rich_menu_id);
   }
 
   if (fields.length === 0) return getLineAccountById(db, id);

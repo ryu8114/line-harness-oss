@@ -18,6 +18,7 @@ import { initBooking } from './booking.js';
 import { initAdminBooking } from './admin-booking.js';
 import { initAdminLink } from './admin-link.js';
 import { initForm } from './form.js';
+import { initMyBookings } from './my-bookings.js';
 
 declare const liff: {
   init(config: { liffId: string }): Promise<void>;
@@ -293,6 +294,8 @@ async function main() {
     const page = getPage();
     if (page === 'book') {
       await initBooking();
+    } else if (page === 'my-bookings') {
+      await initMyBookings();
     } else if (page === 'admin-booking') {
       await initAdminBooking();
     } else if (page === 'admin-link') {
