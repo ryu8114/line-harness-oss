@@ -59,10 +59,9 @@ interface MyBookingsState {
   bookings: Booking[];
   selectedBooking: Booking | null;
   // 日時変更用
-  currentYear: number;
-  currentMonth: number;
+  weekStartDate: string;
+  gridSlots: Record<string, Slot[]>;
   selectedDate: string | null;
-  slots: Slot[];
   selectedTime: string | null;
   // UI状態
   loading: boolean;
@@ -70,15 +69,24 @@ interface MyBookingsState {
   errorMessage: string;
 }
 
+function getTodayJst(): string {
+  return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 const state: MyBookingsState = {
   page: 'list',
   idToken: null,
   bookings: [],
   selectedBooking: null,
-  currentYear: new Date().getFullYear(),
-  currentMonth: new Date().getMonth(),
+  weekStartDate: getTodayJst(),
+  gridSlots: {},
   selectedDate: null,
-  slots: [],
   selectedTime: null,
   loading: false,
   submitting: false,
@@ -167,7 +175,7 @@ function renderDetailPage(): string {
         ${b.customerNote ? `<div class="confirm-row"><span class="confirm-label">備考</span><span class="confirm-value">${escapeHtml(b.customerNote)}</span></div>` : ''}
         <div style="margin-top:24px;display:flex;flex-direction:column;gap:12px;">
           <button class="next-btn" data-action="go-to-reschedule">日時を変更</button>
-          <button class="back-btn" data-action="go-to-cancel" style="color:#e53e3e;border-color:#e53e3e;">キャンセル</button>
+          <button class="outline-btn" data-action="go-to-cancel" style="color:#e53e3e;border-color:#e53e3e;">キャンセル</button>
         </div>
       </div>
     </div>
@@ -189,8 +197,8 @@ function renderCancelConfirmPage(): string {
         <div class="confirm-row"><span class="confirm-label">メニュー</span><span class="confirm-value">${escapeHtml(b.menuName ?? '')}</span></div>
         <div class="confirm-row"><span class="confirm-label">日時</span><span class="confirm-value">${formatDateJa(b.startAt)} ${formatTime(b.startAt)}〜${formatTime(b.endAt)}</span></div>
         <div style="margin-top:24px;display:flex;gap:12px;">
-          <button class="back-btn" data-action="back-to-detail" style="flex:1;">やめる</button>
-          <button class="book-btn${state.submitting ? ' loading' : ''}" data-action="execute-cancel" style="flex:1;background:#e53e3e;" ${state.submitting ? 'disabled' : ''}>
+          <button class="outline-btn" data-action="back-to-detail" style="flex:1;">やめる</button>
+          <button class="book-btn${state.submitting ? ' loading' : ''}" data-action="execute-cancel" style="flex:1;background:#e53e3e;border-color:#e53e3e;" ${state.submitting ? 'disabled' : ''}>
             ${state.submitting ? 'キャンセル中...' : 'キャンセル実行'}
           </button>
         </div>
@@ -205,7 +213,7 @@ function renderCancelCompletePage(): string {
   return `
     <div class="booking-page">
       <div class="success-card">
-        <div class="success-icon" style="color:#e53e3e;">✓</div>
+        <div class="success-icon">✓</div>
         <h2>キャンセルを受け付けました</h2>
         <p class="success-message">ご利用ありがとうございました。<br>またのご利用をお待ちしております。</p>
         <button class="close-btn" data-action="back-to-list">予約一覧に戻る</button>
@@ -214,89 +222,113 @@ function renderCancelCompletePage(): string {
   `;
 }
 
-// ========== 日時変更: カレンダー画面 ==========
+// ========== 日時変更: 週グリッド画面 ==========
 
-function getDaysInMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
+function getWeekNavTitle(startDate: string): string {
+  const end = addDays(startDate, 6);
+  const s = new Date(`${startDate}T12:00:00Z`);
+  const e = new Date(`${end}T12:00:00Z`);
+  const sy = s.getUTCFullYear(), sm = s.getUTCMonth() + 1;
+  const ey = e.getUTCFullYear(), em = e.getUTCMonth() + 1;
+  if (sy === ey && sm === em) return `${sy}年${sm}月`;
+  if (sy === ey) return `${sy}年${sm}月〜${em}月`;
+  return `${sy}年${sm}月〜${ey}年${em}月`;
 }
 
-function getFirstDayOfWeek(year: number, month: number): number {
-  return new Date(year, month, 1).getDay();
+function getAllTimeSlots(gridSlots: Record<string, Slot[]>): string[] {
+  const timeSet = new Set<string>();
+  for (const slots of Object.values(gridSlots)) {
+    for (const s of slots) timeSet.add(s.time);
+  }
+  return [...timeSet].sort();
 }
 
-function isPast(year: number, month: number, day: number): boolean {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return new Date(year, month, day) < now;
-}
-
-function dateToString(year: number, month: number, day: number): string {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function renderRescheduleCalendarPage(): string {
+function renderRescheduleGridPage(): string {
   const b = state.selectedBooking!;
-  const { currentYear, currentMonth, selectedDate } = state;
-  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
-  const firstDay = getFirstDayOfWeek(currentYear, currentMonth);
+  const today = getTodayJst();
+  const isPrevDisabled = state.weekStartDate <= today;
+  const isNextDisabled = addDays(state.weekStartDate, 7) > addDays(today, 14);
+
+  const weekDates: string[] = [];
+  for (let i = 0; i < 7; i++) weekDates.push(addDays(state.weekStartDate, i));
+
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  let calHtml = `
-    <div class="booking-calendar">
-      <div class="calendar-header">
-        <button class="cal-nav" data-action="prev-month">&lt;</button>
-        <span class="cal-title">${currentYear}年${currentMonth + 1}月</span>
-        <button class="cal-nav" data-action="next-month">&gt;</button>
-      </div>
-      <div class="cal-weekdays">
-        ${weekdays.map((d, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</span>`).join('')}
-      </div>
-      <div class="cal-days">
+  const headerCells = weekDates.map((d) => {
+    const dt = new Date(`${d}T12:00:00Z`);
+    const dow = dt.getUTCDay();
+    const dowCls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
+    const todayCls = d === today ? ' today' : '';
+    return `<th class="date-header${dowCls}${todayCls}">${dt.getUTCDate()}<br><span class="dow">(${weekdays[dow]})</span></th>`;
+  }).join('');
+
+  const navHtml = `
+    <div class="week-nav">
+      <button class="week-nav-btn" data-action="prev-week"${isPrevDisabled ? ' disabled' : ''}>◀ 前の週</button>
+      <span class="week-nav-title">${getWeekNavTitle(state.weekStartDate)}</span>
+      <button class="week-nav-btn" data-action="next-week"${isNextDisabled ? ' disabled' : ''}>次の週 ▶</button>
+    </div>
   `;
 
-  for (let i = 0; i < firstDay; i++) calHtml += '<span class="cal-day empty"></span>';
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = dateToString(currentYear, currentMonth, day);
-    const past = isPast(currentYear, currentMonth, day);
-    const selected = selectedDate === dateStr;
-    const dow = new Date(currentYear, currentMonth, day).getDay();
-    const classes = ['cal-day', past ? 'past' : 'active', selected ? 'selected' : '', dow === 0 ? 'sun' : '', dow === 6 ? 'sat' : ''].filter(Boolean).join(' ');
-    calHtml += `<span class="${classes}" ${past ? '' : `data-date="${dateStr}"`}>${day}</span>`;
+  if (state.loading) {
+    return `
+      <div class="booking-page">
+        <div class="booking-header">
+          <button class="back-btn" data-action="back-to-detail">&lt; 予約詳細に戻る</button>
+          <h2>日時変更</h2>
+          <p>${escapeHtml(b.menuName ?? '')}</p>
+        </div>
+        <div class="week-grid-container">
+          ${navHtml}
+          <div class="week-grid-loading">
+            <div class="loading-spinner"></div>
+            <p>空き状況を確認中...</p>
+          </div>
+        </div>
+      </div>
+    `;
   }
-  calHtml += '</div></div>';
+
+  const allTimes = getAllTimeSlots(state.gridSlots);
+  let tableHtml = '';
+  if (allTimes.length === 0) {
+    tableHtml = `<div class="week-grid-empty"><p>この期間に空き枠がありません</p></div>`;
+  } else {
+    const bodyRows = allTimes.map((time) => {
+      const cells = weekDates.map((d) => {
+        const daySlots = state.gridSlots[d];
+        if (!daySlots) return `<td class="grid-cell no-slot"></td>`;
+        const slot = daySlots.find((s) => s.time === time);
+        if (!slot) return `<td class="grid-cell no-slot"></td>`;
+        if (slot.available) {
+          return `<td class="grid-cell available" data-date="${d}" data-time="${time}">◎</td>`;
+        }
+        return `<td class="grid-cell unavailable">×</td>`;
+      }).join('');
+      return `<tr><td class="time-label">${time}</td>${cells}</tr>`;
+    }).join('');
+
+    tableHtml = `
+      <div class="week-grid-scroll">
+        <table class="week-grid">
+          <thead><tr><th class="time-col-header"></th>${headerCells}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    `;
+  }
 
   return `
     <div class="booking-page">
       <div class="booking-header">
         <button class="back-btn" data-action="back-to-detail">&lt; 予約詳細に戻る</button>
         <h2>日時変更</h2>
-        <p>${escapeHtml(b.menuName ?? '')} / ご希望の日付をお選びください</p>
+        <p>${escapeHtml(b.menuName ?? '')} / 新しい日時をタップしてください</p>
       </div>
-      ${calHtml}
-      ${selectedDate ? renderRescheduleSlotsSection() : ''}
-    </div>
-  `;
-}
-
-function renderRescheduleSlotsSection(): string {
-  if (state.loading) {
-    return `<div class="slots-section"><div class="loading-spinner"></div><p>空き状況を確認中...</p></div>`;
-  }
-  if (state.slots.length === 0) {
-    return `<div class="slots-section"><h3>${formatDateJa(state.selectedDate!)}</h3><p class="no-slots">この日は予約枠がありません</p></div>`;
-  }
-
-  const buttons = state.slots.map((slot) => {
-    const isSelected = state.selectedTime === slot.time;
-    const cls = slot.available ? (isSelected ? 'slot-btn selected' : 'slot-btn available') : 'slot-btn full';
-    return `<button class="${cls}" ${slot.available ? `data-time="${slot.time}"` : 'disabled'}>${slot.time}</button>`;
-  }).join('');
-
-  return `
-    <div class="slots-section">
-      <h3>${formatDateJa(state.selectedDate!)}</h3>
-      <div class="slots-grid">${buttons}</div>
-      ${state.selectedTime ? `<button class="next-btn" data-action="go-to-reschedule-confirm">次へ（確認）</button>` : ''}
+      <div class="week-grid-container">
+        ${navHtml}
+        ${tableHtml}
+      </div>
     </div>
   `;
 }
@@ -364,8 +396,8 @@ function render(): void {
     case 'detail': app.innerHTML = renderDetailPage(); break;
     case 'cancel-confirm': app.innerHTML = renderCancelConfirmPage(); break;
     case 'cancel-complete': app.innerHTML = renderCancelCompletePage(); break;
-    case 'reschedule-calendar': app.innerHTML = renderRescheduleCalendarPage(); break;
-    case 'reschedule-slots': app.innerHTML = renderRescheduleCalendarPage(); break; // slots are rendered within calendar
+    case 'reschedule-calendar': app.innerHTML = renderRescheduleGridPage(); break;
+    case 'reschedule-slots': app.innerHTML = renderRescheduleGridPage(); break;
     case 'reschedule-confirm': app.innerHTML = renderRescheduleConfirmPage(); break;
     case 'reschedule-complete': app.innerHTML = renderRescheduleCompletePage(); break;
     case 'error': app.innerHTML = renderErrorPage(); break;
@@ -413,68 +445,55 @@ function attachEvents(): void {
   // 日時変更へ
   app.querySelector('[data-action="go-to-reschedule"]')?.addEventListener('click', () => {
     state.selectedDate = null;
-    state.slots = [];
     state.selectedTime = null;
+    state.weekStartDate = getTodayJst();
+    state.gridSlots = {};
     state.page = 'reschedule-calendar';
-    render();
+    fetchRescheduleWeekSlots(state.weekStartDate);
   });
 
   // キャンセル確認: 戻る
-  app.querySelector('[data-action="back-to-detail"]')?.addEventListener('click', () => {
-    state.page = 'detail';
-    render();
+  app.querySelectorAll('[data-action="back-to-detail"]').forEach((el) => {
+    el.addEventListener('click', () => {
+      state.page = 'detail';
+      render();
+    });
   });
 
   // キャンセル実行
   app.querySelector('[data-action="execute-cancel"]')?.addEventListener('click', () => executeCancel());
 
-  // 日時変更: カレンダーナビ
-  app.querySelector('[data-action="prev-month"]')?.addEventListener('click', () => {
-    state.currentMonth--;
-    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
-    state.selectedDate = null; state.slots = []; state.selectedTime = null;
-    render();
+  // 日時変更: 週ナビ
+  app.querySelector('[data-action="prev-week"]')?.addEventListener('click', () => {
+    const prev = addDays(state.weekStartDate, -7);
+    const today = getTodayJst();
+    state.weekStartDate = prev < today ? today : prev;
+    state.selectedDate = null;
+    state.selectedTime = null;
+    fetchRescheduleWeekSlots(state.weekStartDate);
   });
-  app.querySelector('[data-action="next-month"]')?.addEventListener('click', () => {
-    state.currentMonth++;
-    if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
-    state.selectedDate = null; state.slots = []; state.selectedTime = null;
-    render();
-  });
-
-  // 日付選択
-  app.querySelectorAll('.cal-day.active').forEach((el) => {
-    el.addEventListener('click', () => {
-      const date = (el as HTMLElement).dataset.date;
-      if (date) {
-        state.selectedDate = date;
-        state.selectedTime = null;
-        state.slots = [];
-        state.loading = true;
-        render();
-        fetchRescheduleSlots(date);
-      }
-    });
+  app.querySelector('[data-action="next-week"]')?.addEventListener('click', () => {
+    state.weekStartDate = addDays(state.weekStartDate, 7);
+    state.selectedDate = null;
+    state.selectedTime = null;
+    fetchRescheduleWeekSlots(state.weekStartDate);
   });
 
-  // スロット選択
-  app.querySelectorAll('.slot-btn.available').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.selectedTime = (btn as HTMLElement).dataset.time!;
+  // グリッドセル（◎）タップ → 確認へ
+  app.querySelectorAll('.grid-cell.available').forEach((cell) => {
+    cell.addEventListener('click', () => {
+      const el = cell as HTMLElement;
+      state.selectedDate = el.dataset.date!;
+      state.selectedTime = el.dataset.time!;
+      state.page = 'reschedule-confirm';
       render();
     });
-  });
-
-  // 日時変更確認へ
-  app.querySelector('[data-action="go-to-reschedule-confirm"]')?.addEventListener('click', () => {
-    state.page = 'reschedule-confirm';
-    render();
   });
 
   // 日時変更確認: 戻る
   app.querySelector('[data-action="back-to-reschedule-calendar"]')?.addEventListener('click', () => {
     state.page = 'reschedule-calendar';
-    render();
+    fetchRescheduleWeekSlots(state.weekStartDate);
   });
 
   // 日時変更実行
@@ -514,27 +533,32 @@ async function fetchBookings(): Promise<void> {
   }
 }
 
-async function fetchRescheduleSlots(date: string): Promise<void> {
+async function fetchRescheduleWeekSlots(fromDate: string): Promise<void> {
+  const b = state.selectedBooking!;
+  if (!b.menuId) {
+    state.gridSlots = {};
+    state.loading = false;
+    render();
+    return;
+  }
+  state.loading = true;
+  state.gridSlots = {};
+  render();
   try {
-    const b = state.selectedBooking!;
-    if (!b.menuId) {
-      state.slots = [];
-      state.loading = false;
-      render();
-      return;
-    }
-    const slotsParams = new URLSearchParams({
+    const toDate = addDays(fromDate, 6);
+    const params = new URLSearchParams({
       line_account_id: LINE_ACCOUNT_ID,
       menu_id: b.menuId,
-      date,
+      from: fromDate,
+      to: toDate,
     });
-    const res = await fetch(`/api/public/slots?${slotsParams}`);
+    const res = await fetch(`/api/public/slots?${params}`);
     if (!res.ok) throw new Error('空き状況の取得に失敗しました');
-    const json = await res.json() as { success: boolean; data: Slot[] };
-    state.slots = json.data;
+    const json = await res.json() as { success: boolean; data: Record<string, Slot[]> };
+    state.gridSlots = json.data;
   } catch (err) {
-    console.error('fetchRescheduleSlots error:', err);
-    state.slots = [];
+    console.error('fetchRescheduleWeekSlots error:', err);
+    state.gridSlots = {};
   } finally {
     state.loading = false;
     render();
@@ -584,13 +608,12 @@ async function executeReschedule(): Promise<void> {
 
     if (res.status === 409) {
       state.submitting = false;
-      state.slots = [];
+      state.selectedDate = null;
       state.selectedTime = null;
       state.page = 'reschedule-calendar';
       const err = await res.json().catch(() => null) as { error?: string } | null;
       alert(err?.error || 'この時間帯はすでに予約が入っています。別の時間を選択してください。');
-      render();
-      fetchRescheduleSlots(state.selectedDate!);
+      fetchRescheduleWeekSlots(state.weekStartDate);
       return;
     }
 

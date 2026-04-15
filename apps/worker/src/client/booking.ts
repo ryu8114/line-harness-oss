@@ -40,16 +40,15 @@ interface Slot {
   available: boolean;
 }
 
-type Page = 'menu' | 'calendar' | 'slots' | 'form' | 'confirm' | 'complete' | 'error';
+type Page = 'menu' | 'calendar' | 'form' | 'confirm' | 'complete' | 'error';
 
 interface BookingState {
   page: Page;
   menus: Menu[];
   selectedMenu: Menu | null;
-  currentYear: number;
-  currentMonth: number;
+  weekStartDate: string;
+  gridSlots: Record<string, Slot[]>;
   selectedDate: string | null;
-  slots: Slot[];
   selectedTime: string | null;
   profile: { userId: string; displayName: string } | null;
   idToken: string | null;
@@ -62,14 +61,23 @@ interface BookingState {
   errorMessage: string;
 }
 
+function getTodayJst(): string {
+  return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 const state: BookingState = {
   page: 'menu',
   menus: [],
   selectedMenu: null,
-  currentYear: new Date().getFullYear(),
-  currentMonth: new Date().getMonth(),
+  weekStartDate: getTodayJst(),
+  gridSlots: {},
   selectedDate: null,
-  slots: [],
   selectedTime: null,
   profile: null,
   idToken: null,
@@ -98,6 +106,12 @@ function apiCall(path: string, options?: RequestInit): Promise<Response> {
 
 function formatTime(time: string): string {
   return time;
+}
+
+function addMinutesToTime(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function formatDateJa(dateStr: string): string {
@@ -142,88 +156,127 @@ function renderMenuPage(): string {
   `;
 }
 
-// ========== カレンダー画面 ==========
+// ========== 週間グリッド画面 ==========
 
-function getDaysInMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
+function getWeekNavTitle(startDate: string): string {
+  const end = addDays(startDate, 6);
+  const s = new Date(`${startDate}T12:00:00Z`);
+  const e = new Date(`${end}T12:00:00Z`);
+  const sy = s.getUTCFullYear(), sm = s.getUTCMonth() + 1;
+  const ey = e.getUTCFullYear(), em = e.getUTCMonth() + 1;
+  if (sy === ey && sm === em) return `${sy}年${sm}月`;
+  if (sy === ey) return `${sy}年${sm}月〜${em}月`;
+  return `${sy}年${sm}月〜${ey}年${em}月`;
 }
 
-function getFirstDayOfWeek(year: number, month: number): number {
-  return new Date(year, month, 1).getDay();
+function getAllTimeSlots(gridSlots: Record<string, Slot[]>): string[] {
+  const timeSet = new Set<string>();
+  for (const slots of Object.values(gridSlots)) {
+    for (const s of slots) timeSet.add(s.time);
+  }
+  return [...timeSet].sort();
 }
 
-function isPast(year: number, month: number, day: number): boolean {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return new Date(year, month, day) < now;
-}
+function renderGridPage(): string {
+  const today = getTodayJst();
+  const isPrevDisabled = state.weekStartDate <= today;
+  const nextStart = addDays(state.weekStartDate, 7);
+  // サーバー側の maxBookingDays=14 を超える週は空データになるので次ボタンは常時表示
+  const isNextDisabled = nextStart > addDays(today, 14);
 
-function dateToString(year: number, month: number, day: number): string {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
+  // 週の7日分の日付を生成
+  const weekDates: string[] = [];
+  for (let i = 0; i < 7; i++) weekDates.push(addDays(state.weekStartDate, i));
 
-function renderCalendarPage(): string {
-  const { currentYear, currentMonth, selectedDate } = state;
-  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
-  const firstDay = getFirstDayOfWeek(currentYear, currentMonth);
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  let calHtml = `
-    <div class="booking-calendar">
-      <div class="calendar-header">
-        <button class="cal-nav" data-action="prev-month">&lt;</button>
-        <span class="cal-title">${currentYear}年${currentMonth + 1}月</span>
-        <button class="cal-nav" data-action="next-month">&gt;</button>
-      </div>
-      <div class="cal-weekdays">
-        ${weekdays.map((d, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</span>`).join('')}
-      </div>
-      <div class="cal-days">
+  // ヘッダー行
+  const headerCells = weekDates.map((d) => {
+    const dt = new Date(`${d}T12:00:00Z`);
+    const dow = dt.getUTCDay();
+    const dowCls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
+    const todayCls = d === today ? ' today' : '';
+    const dayNum = dt.getUTCDate();
+    return `<th class="date-header${dowCls}${todayCls}">${dayNum}<br><span class="dow">(${weekdays[dow]})</span></th>`;
+  }).join('');
+
+  const navHtml = `
+    <div class="week-nav">
+      <button class="week-nav-btn" data-action="prev-week"${isPrevDisabled ? ' disabled' : ''}>◀ 前の週</button>
+      <span class="week-nav-title">${getWeekNavTitle(state.weekStartDate)}</span>
+      <button class="week-nav-btn" data-action="next-week"${isNextDisabled ? ' disabled' : ''}>次の週 ▶</button>
+    </div>
   `;
 
-  for (let i = 0; i < firstDay; i++) calHtml += '<span class="cal-day empty"></span>';
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = dateToString(currentYear, currentMonth, day);
-    const past = isPast(currentYear, currentMonth, day);
-    const selected = selectedDate === dateStr;
-    const dow = new Date(currentYear, currentMonth, day).getDay();
-    const classes = ['cal-day', past ? 'past' : 'active', selected ? 'selected' : '', dow === 0 ? 'sun' : '', dow === 6 ? 'sat' : ''].filter(Boolean).join(' ');
-    calHtml += `<span class="${classes}" ${past ? '' : `data-date="${dateStr}"`}>${day}</span>`;
+  if (state.loading) {
+    return `
+      <div class="booking-page">
+        <div class="booking-header">
+          <button class="back-btn" data-action="back-to-menu">&lt; メニュー選択に戻る</button>
+          <h2>${escapeHtml(state.selectedMenu?.name ?? '')}</h2>
+        </div>
+        <div class="week-grid-container">
+          ${navHtml}
+          <div class="week-grid-loading">
+            <div class="loading-spinner"></div>
+            <p>空き状況を確認中...</p>
+          </div>
+        </div>
+      </div>
+    `;
   }
-  calHtml += '</div></div>';
+
+  // 全時間帯の収集（グリッドの行を決める）
+  const allTimes = getAllTimeSlots(state.gridSlots);
+
+  let tableHtml = '';
+  if (allTimes.length === 0) {
+    tableHtml = `<div class="week-grid-empty"><p>この期間に空き枠がありません</p></div>`;
+  } else {
+    const bodyRows = allTimes.map((time) => {
+      const cells = weekDates.map((d) => {
+        const daySlots = state.gridSlots[d];
+        if (!daySlots) {
+          return `<td class="grid-cell no-slot"></td>`;
+        }
+        const slot = daySlots.find((s) => s.time === time);
+        if (!slot) {
+          return `<td class="grid-cell no-slot"></td>`;
+        }
+        if (slot.available) {
+          return `<td class="grid-cell available" data-date="${d}" data-time="${time}">◎</td>`;
+        }
+        return `<td class="grid-cell unavailable">×</td>`;
+      }).join('');
+      return `<tr><td class="time-label">${time}</td>${cells}</tr>`;
+    }).join('');
+
+    tableHtml = `
+      <div class="week-grid-scroll">
+        <table class="week-grid">
+          <thead>
+            <tr>
+              <th class="time-col-header"></th>
+              ${headerCells}
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    `;
+  }
 
   return `
     <div class="booking-page">
       <div class="booking-header">
         <button class="back-btn" data-action="back-to-menu">&lt; メニュー選択に戻る</button>
         <h2>${escapeHtml(state.selectedMenu?.name ?? '')}</h2>
-        <p>ご希望の日付をお選びください</p>
+        <p>日時をタップして予約してください</p>
       </div>
-      ${calHtml}
-      ${state.selectedDate ? renderSlotsSection() : ''}
-    </div>
-  `;
-}
-
-function renderSlotsSection(): string {
-  if (state.loading) {
-    return `<div class="slots-section"><div class="loading-spinner"></div><p>空き状況を確認中...</p></div>`;
-  }
-  if (state.slots.length === 0) {
-    return `<div class="slots-section"><h3>${formatDateJa(state.selectedDate!)}</h3><p class="no-slots">この日は予約枠がありません</p></div>`;
-  }
-
-  const buttons = state.slots.map((slot) => {
-    const isSelected = state.selectedTime === slot.time;
-    const cls = slot.available ? (isSelected ? 'slot-btn selected' : 'slot-btn available') : 'slot-btn full';
-    return `<button class="${cls}" ${slot.available ? `data-time="${slot.time}"` : 'disabled'}>${formatTime(slot.time)}</button>`;
-  }).join('');
-
-  return `
-    <div class="slots-section">
-      <h3>${formatDateJa(state.selectedDate!)}</h3>
-      <div class="slots-grid">${buttons}</div>
-      ${state.selectedTime ? `<button class="next-btn" data-action="go-to-form">次へ（顧客情報入力）</button>` : ''}
+      <div class="week-grid-container">
+        ${navHtml}
+        ${tableHtml}
+      </div>
     </div>
   `;
 }
@@ -275,11 +328,11 @@ function renderConfirmPage(): string {
         <div class="confirm-row"><span class="confirm-label">時間</span><span class="confirm-value">${menu.duration}分</span></div>
         ${menu.price != null ? `<div class="confirm-row"><span class="confirm-label">料金</span><span class="confirm-value">¥${menu.price.toLocaleString()}</span></div>` : ''}
         <div class="confirm-row"><span class="confirm-label">日付</span><span class="confirm-value">${formatDateJa(state.selectedDate!)}</span></div>
-        <div class="confirm-row"><span class="confirm-label">時間帯</span><span class="confirm-value">${state.selectedTime}</span></div>
+        <div class="confirm-row"><span class="confirm-label">時間帯</span><span class="confirm-value">${state.selectedTime}〜${addMinutesToTime(state.selectedTime!, menu.duration)}</span></div>
         <div class="confirm-row"><span class="confirm-label">お名前</span><span class="confirm-value">${escapeHtml(state.customerName)}</span></div>
         ${state.customerPhone ? `<div class="confirm-row"><span class="confirm-label">電話番号</span><span class="confirm-value">${escapeHtml(state.customerPhone)}</span></div>` : ''}
         ${state.customerNote ? `<div class="confirm-row"><span class="confirm-label">症状・お悩み</span><span class="confirm-value">${escapeHtml(state.customerNote)}</span></div>` : ''}
-        <button class="book-btn${state.submitting ? ' loading' : ''}" data-action="submit-booking" ${state.submitting ? 'disabled' : ''}>
+        <button class="book-btn${state.submitting ? ' loading' : ''}" data-action="submit-booking" style="margin-top:20px;" ${state.submitting ? 'disabled' : ''}>
           ${state.submitting ? '送信中...' : '予約を確定する'}
         </button>
       </div>
@@ -297,7 +350,7 @@ function renderCompletePage(): string {
         <h2>予約が完了しました</h2>
         <div class="confirm-details">
           <div class="confirm-row"><span class="confirm-label">メニュー</span><span class="confirm-value">${escapeHtml(state.selectedMenu?.name ?? '')}</span></div>
-          <div class="confirm-row"><span class="confirm-label">日時</span><span class="confirm-value">${formatDateJa(state.selectedDate!)} ${state.selectedTime}</span></div>
+          <div class="confirm-row"><span class="confirm-label">日時</span><span class="confirm-value">${formatDateJa(state.selectedDate!)} ${state.selectedTime}〜${addMinutesToTime(state.selectedTime!, state.selectedMenu?.duration ?? 0)}</span></div>
         </div>
         <p class="success-message">ご予約ありがとうございます。<br>LINEに確認メッセージをお送りしました。<br>当日のお越しをお待ちしております。</p>
         <button class="close-btn" data-action="close">閉じる</button>
@@ -324,7 +377,7 @@ function render(): void {
   const app = getApp();
   switch (state.page) {
     case 'menu': app.innerHTML = renderMenuPage(); break;
-    case 'calendar': app.innerHTML = renderCalendarPage(); break;
+    case 'calendar': app.innerHTML = renderGridPage(); break;
     case 'form': app.innerHTML = renderFormPage(); break;
     case 'confirm': app.innerHTML = renderConfirmPage(); break;
     case 'complete': app.innerHTML = renderCompletePage(); break;
@@ -346,55 +399,40 @@ function attachEvents(): void {
       if (menu) {
         state.selectedMenu = menu;
         state.selectedDate = null;
-        state.slots = [];
         state.selectedTime = null;
+        state.weekStartDate = getTodayJst();
+        state.gridSlots = {};
         state.page = 'calendar';
-        render();
+        fetchWeekSlots(state.weekStartDate);
       }
     });
   });
 
-  // カレンダーナビ
-  app.querySelector('[data-action="prev-month"]')?.addEventListener('click', () => {
-    state.currentMonth--;
-    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
-    state.selectedDate = null; state.slots = []; state.selectedTime = null;
-    render();
+  // 週ナビ
+  app.querySelector('[data-action="prev-week"]')?.addEventListener('click', () => {
+    const prev = addDays(state.weekStartDate, -7);
+    const today = getTodayJst();
+    state.weekStartDate = prev < today ? today : prev;
+    state.selectedDate = null;
+    state.selectedTime = null;
+    fetchWeekSlots(state.weekStartDate);
   });
-  app.querySelector('[data-action="next-month"]')?.addEventListener('click', () => {
-    state.currentMonth++;
-    if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
-    state.selectedDate = null; state.slots = []; state.selectedTime = null;
-    render();
-  });
-
-  // 日付選択
-  app.querySelectorAll('.cal-day.active').forEach((el) => {
-    el.addEventListener('click', () => {
-      const date = (el as HTMLElement).dataset.date;
-      if (date) {
-        state.selectedDate = date;
-        state.selectedTime = null;
-        state.slots = [];
-        state.loading = true;
-        render();
-        fetchSlots(date);
-      }
-    });
+  app.querySelector('[data-action="next-week"]')?.addEventListener('click', () => {
+    state.weekStartDate = addDays(state.weekStartDate, 7);
+    state.selectedDate = null;
+    state.selectedTime = null;
+    fetchWeekSlots(state.weekStartDate);
   });
 
-  // スロット選択
-  app.querySelectorAll('.slot-btn.available').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.selectedTime = (btn as HTMLElement).dataset.time!;
+  // グリッドセル（◎）タップ → 即フォームへ
+  app.querySelectorAll('.grid-cell.available').forEach((cell) => {
+    cell.addEventListener('click', () => {
+      const el = cell as HTMLElement;
+      state.selectedDate = el.dataset.date!;
+      state.selectedTime = el.dataset.time!;
+      state.page = 'form';
       render();
     });
-  });
-
-  // 顧客情報入力へ
-  app.querySelector('[data-action="go-to-form"]')?.addEventListener('click', () => {
-    state.page = 'form';
-    render();
   });
 
   // 確認画面へ
@@ -413,7 +451,12 @@ function attachEvents(): void {
 
   // 戻るボタン
   app.querySelector('[data-action="back-to-menu"]')?.addEventListener('click', () => { state.page = 'menu'; render(); });
-  app.querySelector('[data-action="back-to-calendar"]')?.addEventListener('click', () => { state.page = 'calendar'; render(); });
+  app.querySelector('[data-action="back-to-calendar"]')?.addEventListener('click', () => {
+    state.page = 'calendar';
+    state.selectedDate = null;
+    state.selectedTime = null;
+    fetchWeekSlots(state.weekStartDate);
+  });
   app.querySelector('[data-action="back-to-form"]')?.addEventListener('click', () => { state.page = 'form'; render(); });
 
   // 閉じる
@@ -446,20 +489,25 @@ async function fetchMenus(): Promise<void> {
   }
 }
 
-async function fetchSlots(date: string): Promise<void> {
+async function fetchWeekSlots(fromDate: string): Promise<void> {
+  state.loading = true;
+  state.gridSlots = {};
+  render();
   try {
+    const toDate = addDays(fromDate, 6);
     const params = new URLSearchParams({
       line_account_id: LINE_ACCOUNT_ID,
       menu_id: state.selectedMenu!.id,
-      date,
+      from: fromDate,
+      to: toDate,
     });
     const res = await apiCall(`/api/public/slots?${params}`);
     if (!res.ok) throw new Error('空き状況の取得に失敗しました');
-    const json = await res.json() as { success: boolean; data: Slot[] };
-    state.slots = json.data;
+    const json = await res.json() as { success: boolean; data: Record<string, Slot[]> };
+    state.gridSlots = json.data;
   } catch (err) {
-    console.error('fetchSlots error:', err);
-    state.slots = [];
+    console.error('fetchWeekSlots error:', err);
+    state.gridSlots = {};
   } finally {
     state.loading = false;
     render();
@@ -491,12 +539,11 @@ async function submitBooking(): Promise<void> {
 
     if (res.status === 409) {
       state.submitting = false;
-      state.slots = [];
+      state.selectedDate = null;
       state.selectedTime = null;
       state.page = 'calendar';
       alert('この時間帯はすでに予約が入りました。別の時間を選択してください。');
-      render();
-      fetchSlots(state.selectedDate!);
+      fetchWeekSlots(state.weekStartDate);
       return;
     }
 
