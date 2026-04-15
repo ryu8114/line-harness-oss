@@ -278,18 +278,20 @@ export interface LineAccount {
   channelId: string;
   /** アカウント名 */
   name: string;
-  /** Channel Access Token */
-  channelAccessToken: string;
-  /** Channel Secret */
-  channelSecret: string;
+  /** Channel Access Token — present only in system_admin responses */
+  channelAccessToken?: string;
+  /** Channel Secret — present only in system_admin responses */
+  channelSecret?: string;
   /** 有効/無効 */
   isActive: boolean;
-  /** キャンセル期限（何時間前まで）*/
-  cancelDeadlineHours: number;
-  /** 店舗情報 JSON 文字列 */
-  shopInfo: string | null;
-  /** 顧客用リッチメニューID */
-  customerRichMenuId: string | null;
+  /** 院長用リッチメニューID — absent in staff/minimal responses */
+  adminRichMenuId?: string | null;
+  /** キャンセル期限（何時間前まで）— absent in staff/minimal responses */
+  cancelDeadlineHours?: number;
+  /** 店舗情報 JSON 文字列 — absent in staff/minimal responses */
+  shopInfo?: string | null;
+  /** 顧客用リッチメニューID — absent in staff/minimal responses */
+  customerRichMenuId?: string | null;
   /** 作成日時 (ISO 8601) */
   createdAt: string;
   /** 更新日時 (ISO 8601) */

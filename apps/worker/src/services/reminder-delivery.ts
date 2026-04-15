@@ -12,10 +12,12 @@ import {
   markReminderStepDelivered,
   completeReminderIfDone,
   getFriendById,
+  getBookingById,
   jstNow,
 } from '@line-crm/db';
 import type { LineClient, Message } from '@line-crm/line-sdk';
 import { addJitter, sleep } from './stealth.js';
+import { formatDateJa, formatTime } from './booking-notifications.js';
 
 export async function processReminderDeliveries(
   db: D1Database,
@@ -38,8 +40,15 @@ export async function processReminderDeliveries(
         continue;
       }
 
+      // 予約リマインドの場合は booking_id から動的にメッセージを生成する
+      const booking = fr.booking_id ? await getBookingById(db, fr.booking_id) : null;
+
       for (const step of fr.steps) {
-        const message = buildMessage(step.message_type, step.message_content);
+        const resolvedContent =
+          booking && step.message_type === 'text'
+            ? buildBookingReminderText(booking.start_at, booking.end_at, booking.menu_name_snapshot)
+            : step.message_content;
+        const message = buildMessage(step.message_type, resolvedContent);
         await lineClient.pushMessage(friend.line_user_id, [message]);
 
         // メッセージログに記録
@@ -49,7 +58,7 @@ export async function processReminderDeliveries(
             `INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at)
              VALUES (?, ?, 'outgoing', ?, ?, ?)`,
           )
-          .bind(logId, friend.id, step.message_type, step.message_content, jstNow())
+          .bind(logId, friend.id, step.message_type, resolvedContent, jstNow())
           .run();
 
         // 配信済みを記録
@@ -62,6 +71,22 @@ export async function processReminderDeliveries(
       console.error(`リマインダ配信エラー (friend_reminder ${fr.id}):`, err);
     }
   }
+}
+
+/** 予約リマインド用の動的テキストを生成する */
+export function buildBookingReminderText(
+  startAt: string,
+  endAt: string,
+  menuName: string | null,
+): string {
+  const lines = [
+    '【明日のご予約リマインド】',
+    formatDateJa(startAt),
+    `${formatTime(startAt)}〜${formatTime(endAt)}`,
+  ];
+  if (menuName) lines.push(menuName);
+  lines.push('', 'ご予約ありがとうございます。', 'お気をつけてお越しください。');
+  return lines.join('\n');
 }
 
 function buildMessage(messageType: string, messageContent: string, altText?: string): Message {

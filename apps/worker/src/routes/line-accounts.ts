@@ -24,15 +24,23 @@ function serializeLineAccount(row: DbLineAccount) {
   };
 }
 
-function serializeLineAccountFull(row: DbLineAccount) {
+// Operational fields visible to clinic_admin — never includes credentials
+function serializeLineAccountSafe(row: DbLineAccount) {
   return {
     ...serializeLineAccount(row),
-    channelAccessToken: row.channel_access_token,
-    channelSecret: row.channel_secret,
     adminRichMenuId: row.admin_rich_menu_id,
     cancelDeadlineHours: row.cancel_deadline_hours,
     shopInfo: row.shop_info,
     customerRichMenuId: row.customer_rich_menu_id,
+  };
+}
+
+// Full response including credentials — system_admin only
+function serializeLineAccountFull(row: DbLineAccount) {
+  return {
+    ...serializeLineAccountSafe(row),
+    channelAccessToken: row.channel_access_token,
+    channelSecret: row.channel_secret,
   };
 }
 
@@ -107,13 +115,22 @@ lineAccounts.get('/api/line-accounts/:id', async (c) => {
       return c.json({ success: false, error: 'LINE account not found' }, 404);
     }
     const staff = c.get('staff');
+    // Non-system_admin must have a lineAccountId assigned; fail closed if not.
+    if (staff && staff.role !== 'system_admin' && !staff.lineAccountId) {
+      return c.json({ success: false, error: '院が未割り当てです' }, 403);
+    }
     // admin/staff は自院以外へのアクセスを拒否（チャンネルシークレット漏洩防止）
-    if (staff && staff.role !== 'system_admin' && staff.lineAccountId && account.id !== staff.lineAccountId) {
+    if (staff && staff.role !== 'system_admin' && account.id !== staff.lineAccountId) {
       return c.json({ success: false, error: '他院のデータにはアクセスできません' }, 403);
     }
-    const data = staff?.role === 'staff'
-      ? serializeLineAccount(account)
-      : serializeLineAccountFull(account);
+    // Credentials (channelAccessToken, channelSecret) are system_admin-only.
+    // clinic_admin gets operational fields; staff gets the minimal public shape.
+    const data =
+      staff?.role === 'system_admin'
+        ? serializeLineAccountFull(account)
+        : staff?.role === 'clinic_admin'
+          ? serializeLineAccountSafe(account)
+          : serializeLineAccount(account);
     return c.json({ success: true, data });
   } catch (err) {
     console.error('GET /api/line-accounts/:id error:', err);

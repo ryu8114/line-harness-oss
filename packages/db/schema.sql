@@ -212,12 +212,16 @@ CREATE TABLE IF NOT EXISTS line_accounts (
   liff_id_admin                 TEXT,
   google_calendar_connection_id TEXT,
   booking_enabled               INTEGER NOT NULL DEFAULT 0,
-  min_booking_hours             INTEGER NOT NULL DEFAULT 2,
-  max_booking_days              INTEGER NOT NULL DEFAULT 30,
+  min_booking_hours             INTEGER NOT NULL DEFAULT 3,
+  max_booking_days              INTEGER NOT NULL DEFAULT 14,
   slot_unit                     INTEGER NOT NULL DEFAULT 30,
-  plan                          TEXT NOT NULL DEFAULT 'free',
+  plan                          TEXT NOT NULL DEFAULT 'monitor',
   -- Admin rich menu (023_admin_rich_menu)
   admin_rich_menu_id            TEXT,
+  -- Customer booking (024_customer_booking)
+  cancel_deadline_hours         INTEGER NOT NULL DEFAULT 24,
+  shop_info                     TEXT,
+  customer_rich_menu_id         TEXT,
   created_at                    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at                    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
@@ -325,20 +329,34 @@ CREATE TABLE IF NOT EXISTS google_calendar_connections (
 );
 
 CREATE TABLE IF NOT EXISTS calendar_bookings (
-  id             TEXT PRIMARY KEY,
-  connection_id  TEXT NOT NULL REFERENCES google_calendar_connections (id) ON DELETE CASCADE,
-  friend_id      TEXT REFERENCES friends (id) ON DELETE SET NULL,
-  event_id       TEXT,
-  title          TEXT NOT NULL,
-  start_at       TEXT NOT NULL,
-  end_at         TEXT NOT NULL,
-  status         TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed')),
-  metadata       TEXT,
-  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
-  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+  id                     TEXT PRIMARY KEY,
+  -- nullable: Google Calendar integration is optional (019)
+  connection_id          TEXT REFERENCES google_calendar_connections (id) ON DELETE SET NULL,
+  line_account_id        TEXT,
+  friend_id              TEXT REFERENCES friends (id) ON DELETE SET NULL,
+  event_id               TEXT,
+  title                  TEXT NOT NULL,
+  start_at               TEXT NOT NULL,
+  end_at                 TEXT NOT NULL,
+  status                 TEXT NOT NULL DEFAULT 'confirmed'
+                           CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show')),
+  metadata               TEXT,
+  -- Booking detail columns (018_booking_system + 019)
+  menu_id                TEXT,
+  menu_name_snapshot     TEXT,
+  menu_duration_snapshot INTEGER,
+  menu_price_snapshot    INTEGER,
+  customer_name          TEXT,
+  customer_phone         TEXT,
+  customer_note          TEXT,
+  created_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_calendar_bookings_connection ON calendar_bookings (connection_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_bookings_friend ON calendar_bookings (friend_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_bookings_status ON calendar_bookings (status);
+CREATE INDEX IF NOT EXISTS idx_calendar_bookings_account ON calendar_bookings (line_account_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_bookings_start ON calendar_bookings (start_at);
 
 -- ============================================================
@@ -369,6 +387,8 @@ CREATE TABLE IF NOT EXISTS friend_reminders (
   friend_id       TEXT NOT NULL REFERENCES friends (id) ON DELETE CASCADE,
   reminder_id     TEXT NOT NULL REFERENCES reminders (id) ON DELETE CASCADE,
   target_date     TEXT NOT NULL,
+  -- booking_id ties reminder to a specific booking (024_customer_booking)
+  booking_id      TEXT,
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
@@ -593,17 +613,19 @@ CREATE INDEX IF NOT EXISTS idx_ad_conversion_logs_status ON ad_conversion_logs (
 
 -- Staff member accounts with role-based access control
 CREATE TABLE IF NOT EXISTS staff_members (
-  id         TEXT PRIMARY KEY,
-  name       TEXT NOT NULL,
-  email      TEXT,
-  role       TEXT NOT NULL CHECK (role IN ('system_admin', 'clinic_admin', 'staff')),
-  api_key    TEXT UNIQUE NOT NULL,
-  is_active  INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  email           TEXT,
+  role            TEXT NOT NULL CHECK (role IN ('system_admin', 'clinic_admin', 'staff')),
+  api_key         TEXT UNIQUE NOT NULL,
+  is_active       INTEGER NOT NULL DEFAULT 1,
+  line_account_id TEXT REFERENCES line_accounts(id),
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_members_api_key ON staff_members(api_key);
+CREATE INDEX IF NOT EXISTS idx_staff_members_line_account_id ON staff_members(line_account_id);
 
 -- ============================================================
 -- Booking System (018): 整体院予約システム
