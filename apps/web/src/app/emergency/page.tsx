@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
@@ -35,6 +35,13 @@ const emergencyPrompts = [
 ]
 
 export default function EmergencyPage() {
+  const [allowed, setAllowed] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const role = localStorage.getItem('lh_staff_role')
+    setAllowed(role === 'system_admin')
+  }, [])
+
   const [actions, setActions] = useState<EmergencyAction[]>([
     {
       id: 'stop-broadcasts',
@@ -132,6 +139,17 @@ export default function EmergencyPage() {
       default:
         return null
     }
+  }
+
+  if (allowed === null) return null
+
+  if (!allowed) {
+    return (
+      <div>
+        <Header title="緊急コントロール" />
+        <div className="p-8 text-center text-gray-500">このページへのアクセス権限がありません。</div>
+      </div>
+    )
   }
 
   return (

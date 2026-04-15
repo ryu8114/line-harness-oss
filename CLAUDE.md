@@ -35,10 +35,10 @@ LINE Harness OSSをベースに予約機能を拡張したもの。
 
 ### 中優先度
 
-- [ ] **管理者LIFF（院長向け）の作成**
-  - LINE Developers で LIFF を新規追加（エンドポイント: `/?page=admin-booking`）
-  - 作成後: `UPDATE line_accounts SET liff_id_admin = '...' WHERE id = '...'`
-  - 機能: 今日の予約一覧・予約詳細表示
+- [x] **管理者LIFF（院長向け）の作成** ✅ 実装済み・動作確認済み
+  - バックエンド: `apps/worker/src/routes/admin-liff-api.ts`（今日の予約一覧・詳細API）
+  - フロントエンド: `apps/worker/src/client/admin-booking.ts`（`page=admin-booking`）
+  - 院長の公式LINEリッチメニューから動作確認済み
 
 - [ ] **前日リマインド配信の動作確認**
   - 予約作成時に `friend_reminders` へ登録される仕組みは実装済み
@@ -49,6 +49,14 @@ LINE Harness OSSをベースに予約機能を拡張したもの。
 - [ ] 管理者LIFFから臨時休業を登録できるようにする
 - [ ] リピーター判定: `friends.metadata` に顧客情報を保存し次回予約時に自動入力
 - [ ] `line_accounts.channel_access_token` の暗号化（現状平文）
+
+### UI改善
+
+- [ ] 院長リッチメニューの今日の予約・明日の予約カードのレイアウト崩れを修正
+- [ ] 院長側の店舗設定画面（管理画面）のスマホUIの崩れを修正
+- [ ] 管理画面のヘッダー名「LINE Harness」を変更
+- [ ] 管理画面の不要なメニュー項目を非表示にする
+- [ ] お店情報（住所・電話・営業時間・Google マップURL）を登録する管理画面ページを作成
 
 ---
 
