@@ -93,7 +93,17 @@ npx wrangler d1 execute line-harness --remote --file=packages/db/migrations/<フ
 
 ## 複数院追加の手順
 
+### クライアントがすでに公式LINEを持っている場合の注意点
+
+- **Webhook URL の上書き**: 既存システムで Webhook を使っていた場合、変更すると既存の動作が止まる。事前に確認すること。
+- **既存リッチメニューの上書き**: スクリプトで新しいリッチメニューを設定すると既存のものは上書きされる。
+- **LINE Login チャンネル**: LIFF に必要。Nogardwons が持つ1つのチャンネル（`2009660165`）を全院共通で使うので、クライアント側での用意は不要。
+- **既存フォロワー**: すでにフォロワーがいる場合、設定後すぐ予約機能を提供できる（メリット）。
+
+### 手順
+
 1. LINE Developers でプロバイダー「タナカワークス」に Messaging API チャンネルを追加
+   （既存の公式LINEがある場合は既存チャンネルのID・トークン・シークレットを確認）
 2. Webhook URL を `https://line-harness.nogardwons.workers.dev/webhook` に設定
 3. D1 に `line_accounts` レコードを INSERT
 
@@ -109,8 +119,27 @@ INSERT INTO staff_members (id, name, role, api_key, line_account_id)
 VALUES (lower(hex(randomblob(16))), '院長名', 'clinic_admin', 'lh_任意のキー', '上記の院ID');
 ```
 
-5. ログイン URL を院長に渡す: `https://line-harness-web-a61.pages.dev/login?key=lh_任意のキー`
-6. LINE Developers で患者向け LIFF の `line_account_id` パラメータを変えた URL を院に渡す
+5. admin-link トークンを発行して院長に送る（有効期限 24 時間）
+
+```bash
+curl -X POST https://line-harness.nogardwons.workers.dev/api/admin-liff/link-token \
+  -H "Authorization: Bearer lh_自分のAPIキー" \
+  -H "Content-Type: application/json" \
+  -d '{"lineAccountId": "上記の院ID"}'
+```
+
+返ってきた `liffUrl` を院長に送る。院長がLINEで開くと LINE User ID が紐付けられ、院長用リッチメニューが自動適用される。
+
+6. 院長用リッチメニューを作成
+
+```bash
+KEY=lh_xxx LIFF_URL_ADMIN=https://liff.line.me/2009660165-iO7T7i2u \
+  bash scripts/create-admin-rich-menu.sh ./admin-menu.png <line_account_id>
+```
+
+返ってきた `richMenuId` を D1 に保存（スクリプトの指示通り）。
+
+7. LINE Developers で患者向け LIFF の `line_account_id` パラメータを変えた URL を院に渡す
 
 ※ Worker・D1・Pages の再デプロイは不要。
 
