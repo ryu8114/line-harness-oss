@@ -139,3 +139,15 @@ export async function countActiveStaffByRole(db: D1Database, role: string): Prom
     .first<{ count: number }>();
   return result?.count ?? 0;
 }
+
+export async function getClinicAdminByLineAccountId(
+  db: D1Database,
+  lineAccountId: string,
+): Promise<StaffMember | null> {
+  return db
+    .prepare(
+      'SELECT * FROM staff_members WHERE line_account_id = ? AND role = ? AND is_active = 1 LIMIT 1',
+    )
+    .bind(lineAccountId, 'clinic_admin')
+    .first<StaffMember>();
+}

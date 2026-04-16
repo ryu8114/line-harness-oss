@@ -2,11 +2,12 @@
 # 院長用リッチメニューを作成し、画像をアップロードするスクリプト
 #
 # 使い方:
-#   KEY=lh_xxx bash scripts/create-admin-rich-menu.sh ./admin-menu.png <line_account_id>
+#   KEY=lh_xxx LIFF_URL_ADMIN=https://liff.line.me/xxxx bash scripts/create-admin-rich-menu.sh ./admin-menu.png <line_account_id>
 #
 # 環境変数:
-#   API  — Worker の URL（デフォルト: https://line-harness.nogardwons.workers.dev）
-#   KEY  — API キー（必須）
+#   API           — Worker の URL（デフォルト: https://line-harness.nogardwons.workers.dev）
+#   KEY           — API キー（必須）
+#   LIFF_URL_ADMIN — 院長向けLIFF URL（デフォルト: https://line-harness-web-a61.pages.dev/booking/list）
 
 set -euo pipefail
 
@@ -34,6 +35,7 @@ fi
 
 # ---------- 環境変数チェック ----------
 API="${API:-https://line-harness.nogardwons.workers.dev}"
+LIFF_URL_ADMIN="${LIFF_URL_ADMIN:-https://line-harness-web-a61.pages.dev/booking/list}"
 
 if [[ -z "${KEY:-}" ]]; then
   echo "Error: KEY environment variable is required." >&2
@@ -58,7 +60,7 @@ RICH_MENU_PAYLOAD='{
       "action": {
         "type": "uri",
         "label": "店舗設定",
-        "uri": "https://line-harness-web-a61.pages.dev/booking/hours"
+        "uri": "${LIFF_URL_ADMIN}"
       }
     },
     {

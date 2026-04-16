@@ -22,7 +22,6 @@ function LoginForm() {
 
       if (res.ok) {
         localStorage.setItem('lh_api_key', key)
-        // Fetch staff profile for name/role/lineAccountId display
         try {
           const profileRes = await fetch(`${apiUrl}/api/staff/me`, {
             headers: { Authorization: `Bearer ${key}` },
@@ -53,11 +52,10 @@ function LoginForm() {
     }
   }
 
-  // URL の ?key= パラメータで自動ログイン、?redirect= でログイン後の遷移先を指定
+  // URL の ?key= パラメータで自動ログイン
   useEffect(() => {
     const urlKey = searchParams.get('key')
     if (urlKey) {
-      // セキュリティ: URL から key を即削除（ブラウザ履歴・Referer 漏洩防止）
       window.history.replaceState({}, '', '/login')
       handleLoginWithKey(urlKey)
     }

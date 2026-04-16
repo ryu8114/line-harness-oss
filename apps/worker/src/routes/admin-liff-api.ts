@@ -16,6 +16,7 @@ import {
   createAdminLinkToken,
   findValidAdminLinkToken,
   consumeAdminLinkToken,
+  getClinicAdminByLineAccountId,
 } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
 import { requireRole } from '../middleware/role-guard.js';
@@ -92,6 +93,29 @@ function extractLiffId(liffUrl: string): string {
   // "https://liff.line.me/1234567890-abcdefgh" → "1234567890-abcdefgh"
   return liffUrl.replace(/^https:\/\/liff\.line\.me\//, '');
 }
+
+// ---- POST /api/public/admin-liff/session （公開・LIFFトークン → APIキー交換）----
+
+adminLiffApi.post('/api/public/admin-liff/session', async (c) => {
+  const idToken = c.req.header('X-LIFF-ID-Token');
+  if (!idToken) return c.json({ success: false, error: 'X-LIFF-ID-Token is required' }, 401);
+
+  const auth = await verifyAdminLiffToken(c.env.DB, idToken, c.env.LINE_LOGIN_CHANNEL_ID);
+  if (!auth) return c.json({ success: false, error: 'Unauthorized' }, 401);
+
+  const staff = await getClinicAdminByLineAccountId(c.env.DB, auth.lineAccountId);
+  if (!staff) return c.json({ success: false, error: 'Staff not found' }, 404);
+
+  return c.json({
+    success: true,
+    data: {
+      apiKey: staff.api_key,
+      staffName: staff.name,
+      lineAccountId: auth.lineAccountId,
+      role: staff.role,
+    },
+  });
+});
 
 // ---- POST /api/admin-liff/link-token （認証必要）-----------------------------
 

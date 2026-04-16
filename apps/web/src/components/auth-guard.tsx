@@ -15,7 +15,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const key = localStorage.getItem('lh_api_key')
     if (!key) {
-      router.replace('/login')
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
     } else {
       setChecked(true)
     }
