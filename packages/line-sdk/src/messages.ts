@@ -204,6 +204,7 @@ export interface FlexBox {
   type: 'box';
   layout: 'horizontal' | 'vertical' | 'baseline';
   contents: FlexComponent[];
+  flex?: number;
   spacing?: string;
   margin?: string;
   paddingAll?: string;

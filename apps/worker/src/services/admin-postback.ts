@@ -6,7 +6,7 @@
  */
 
 import { getBookingsByAccount, getBookingById } from '@line-crm/db';
-import { LineClient, flexBubble, flexBox, flexText } from '@line-crm/line-sdk';
+import { LineClient, flexBubble, flexBox, flexText, type FlexSeparator } from '@line-crm/line-sdk';
 import { formatDateJa, formatTime } from './booking-notifications.js';
 
 const MAX_BOOKINGS_DISPLAY = 10;
@@ -72,25 +72,31 @@ async function replyBookingsByDate(
   }
 
   // ボディの予約リスト（各行をタップすると詳細を返す）
-  const bookingItems = bookings.map(b =>
-    flexBox('horizontal', [
+  // 時刻列(flex:3) + 縦並び[名前・メニュー](flex:5) の2列レイアウト
+  const bookingItems = bookings.flatMap((b, i) => {
+    const row = flexBox('horizontal', [
       flexText(
         `${formatTime(b.start_at)}〜${formatTime(b.end_at)}`,
-        { size: 'sm', color: '#555555', flex: 2 },
+        { size: 'sm', color: '#555555', flex: 3 },
       ),
-      flexText(
-        b.customer_name ?? '（名前なし）',
-        { size: 'sm', flex: 3, wrap: true },
-      ),
-      flexText(
-        b.menu_name_snapshot ?? '',
-        { size: 'sm', color: '#888888', flex: 3, wrap: true },
-      ),
+      flexBox('vertical', [
+        flexText(
+          b.customer_name ?? '（名前なし）',
+          { size: 'sm', wrap: true },
+        ),
+        flexText(
+          b.menu_name_snapshot ?? '',
+          { size: 'xs', color: '#888888', wrap: true },
+        ),
+      ], { flex: 5 }),
+      flexText('›', { size: 'lg', color: '#cccccc', flex: 1, align: 'end' }),
     ], {
       margin: 'sm',
       action: { type: 'postback', label: '詳細', data: `action=admin_booking_detail&id=${b.id}` },
-    }),
-  );
+    });
+    const sep: FlexSeparator = { type: 'separator', margin: 'sm' };
+    return i === 0 ? [row] : [sep, row];
+  });
 
   if (truncated) {
     bookingItems.push(
