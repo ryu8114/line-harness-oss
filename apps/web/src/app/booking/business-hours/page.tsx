@@ -114,9 +114,9 @@ export default function BusinessHoursPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="divide-y divide-gray-100">
             {DAYS.map((dayLabel, i) => (
-              <div key={i} className="px-4 py-4 flex items-start gap-3">
+              <div key={i} className="px-4 py-4 flex items-start gap-2">
                 {/* Day toggle */}
-                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                <div className="flex items-center gap-2 shrink-0 pt-1">
                   <button
                     onClick={() => update(i, { isOpen: !days[i].isOpen })}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${days[i].isOpen ? 'bg-green-500' : 'bg-gray-200'}`}
@@ -127,44 +127,44 @@ export default function BusinessHoursPage() {
                 </div>
 
                 {days[i].isOpen ? (
-                  <div className="flex flex-col gap-2 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-8 shrink-0">営業</span>
+                  <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-400 w-7 shrink-0">営業</span>
                       <input
                         type="time"
                         value={days[i].openTime}
                         onChange={(e) => update(i, { openTime: e.target.value })}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
-                      <span className="text-gray-400">〜</span>
+                      <span className="text-gray-400 shrink-0">〜</span>
                       <input
                         type="time"
                         value={days[i].closeTime}
                         onChange={(e) => update(i, { closeTime: e.target.value })}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-8 shrink-0">休憩</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-400 w-7 shrink-0">休憩</span>
                       <input
                         type="time"
                         value={days[i].breakStart}
                         onChange={(e) => update(i, { breakStart: e.target.value })}
                         placeholder="--:--"
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
-                      <span className="text-gray-400">〜</span>
+                      <span className="text-gray-400 shrink-0">〜</span>
                       <input
                         type="time"
                         value={days[i].breakEnd}
                         onChange={(e) => update(i, { breakEnd: e.target.value })}
                         placeholder="--:--"
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
                     </div>
                   </div>
                 ) : (
-                  <span className="text-sm text-gray-400 pt-0.5">定休日</span>
+                  <span className="text-sm text-gray-400 pt-1">定休日</span>
                 )}
               </div>
             ))}
