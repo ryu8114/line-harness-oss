@@ -6,6 +6,7 @@ import Link from 'next/link'
 import type { Scenario, ScenarioStep, ScenarioTriggerType, MessageType } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import FlexPreviewComponent from '@/components/flex-preview'
 
 type ScenarioWithSteps = Scenario & { steps: ScenarioStep[] }
@@ -75,6 +76,7 @@ function ImagePreview({ content }: { content: string }) {
 }
 
 export default function ScenarioDetailClient({ scenarioId }: { scenarioId: string }) {
+  const confirm = useConfirm()
   const id = scenarioId
 
   const [scenario, setScenario] = useState<ScenarioWithSteps | null>(null)
@@ -203,7 +205,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
   }
 
   const handleDeleteStep = async (stepId: string) => {
-    if (!confirm('このステップを削除してもよいですか？')) return
+    if (!await confirm({ message: 'このステップを削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.scenarios.deleteStep(id, stepId)
       loadScenario()

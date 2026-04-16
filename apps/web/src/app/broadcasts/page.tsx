@@ -5,6 +5,7 @@ import type { Tag } from '@line-crm/shared'
 import { api, type ApiBroadcast, type BroadcastInsight } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import BroadcastForm from '@/components/broadcasts/broadcast-form'
 import CcPromptButton from '@/components/cc-prompt-button'
 
@@ -49,6 +50,7 @@ function formatDatetime(iso: string | null): string {
 }
 
 export default function BroadcastsPage() {
+  const confirm = useConfirm()
   const { selectedAccountId } = useAccount()
   const [broadcasts, setBroadcasts] = useState<ApiBroadcast[]>([])
   const [tags, setTags] = useState<Tag[]>([])
@@ -108,7 +110,7 @@ export default function BroadcastsPage() {
   }, [broadcasts])
 
   const handleSend = async (id: string) => {
-    if (!confirm('この配信を今すぐ送信してもよいですか？')) return
+    if (!await confirm({ message: 'この配信を今すぐ送信してもよいですか？', confirmLabel: '送信する' })) return
     setSendingId(id)
     try {
       await api.broadcasts.send(id)
@@ -121,7 +123,7 @@ export default function BroadcastsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('この配信を削除してもよいですか？')) return
+    if (!await confirm({ message: 'この配信を削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.broadcasts.delete(id)
       load()

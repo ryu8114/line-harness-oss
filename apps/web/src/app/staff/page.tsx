@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import { fetchApi } from '@/lib/api'
 import type { ApiResponse } from '@line-crm/shared'
 import type { StaffMember } from '@line-crm/shared'
@@ -29,6 +30,7 @@ function maskKey(key: string): string {
 }
 
 export default function StaffPage() {
+  const confirm = useConfirm()
   const [members, setMembers] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -113,7 +115,7 @@ export default function StaffPage() {
   }
 
   const handleRegenerateKey = async (member: StaffMember) => {
-    if (!confirm(`${member.name} のAPIキーを再生成しますか？\n現在のキーは無効になります。`)) return
+    if (!await confirm({ message: `${member.name} のAPIキーを再生成しますか？\n現在のキーは無効になります。`, confirmLabel: '再生成する' })) return
     try {
       const res = await fetchApi<ApiResponse<{ apiKey: string }>>(`/api/staff/${member.id}/regenerate-key`, {
         method: 'POST',
@@ -129,7 +131,7 @@ export default function StaffPage() {
   }
 
   const handleDelete = async (member: StaffMember) => {
-    if (!confirm(`${member.name} を削除しますか？\nこの操作は元に戻せません。`)) return
+    if (!await confirm({ message: `${member.name} を削除しますか？\nこの操作は元に戻せません。`, confirmLabel: '削除する', danger: true })) return
     try {
       await fetchApi<ApiResponse<null>>(`/api/staff/${member.id}`, { method: 'DELETE' })
       await loadMembers()

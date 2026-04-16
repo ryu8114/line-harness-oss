@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 interface NotificationRule {
@@ -81,6 +82,7 @@ const ccPrompts = [
 ]
 
 export default function NotificationsPage() {
+  const confirm = useConfirm()
   const [rules, setRules] = useState<NotificationRule[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
@@ -193,7 +195,7 @@ export default function NotificationsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このルールを削除してもよいですか？')) return
+    if (!await confirm({ message: 'このルールを削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.notifications.rules.delete(id)
       loadRules()

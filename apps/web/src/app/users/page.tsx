@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import type { User } from '@line-crm/shared'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 const ccPrompts = [
@@ -26,6 +27,7 @@ const ccPrompts = [
 ]
 
 export default function UsersPage() {
+  const confirm = useConfirm()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -60,7 +62,7 @@ export default function UsersPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このユーザーを削除しますか？')) return
+    if (!await confirm({ message: 'このユーザーを削除しますか？', confirmLabel: '削除する', danger: true })) return
     await api.users.delete(id)
     load()
   }

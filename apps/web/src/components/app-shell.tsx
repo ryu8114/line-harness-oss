@@ -3,6 +3,7 @@ import { usePathname } from 'next/navigation'
 import Sidebar from './layout/sidebar'
 import AuthGuard from './auth-guard'
 import { AccountProvider } from '@/contexts/account-context'
+import { ConfirmProvider } from '@/contexts/confirm-context'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -14,12 +15,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
       <AccountProvider>
+        <ConfirmProvider>
         <div className="flex min-h-screen">
           <Sidebar />
           <main className="flex-1 pt-20 px-4 pb-6 sm:px-6 lg:pt-8 lg:px-8 lg:pb-8 overflow-auto">
             {children}
           </main>
         </div>
+        </ConfirmProvider>
       </AccountProvider>
     </AuthGuard>
   )

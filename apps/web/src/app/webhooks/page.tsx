@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import { api } from '@/lib/api'
 import CcPromptButton from '@/components/cc-prompt-button'
 
@@ -48,6 +49,7 @@ const ccPrompts = [
 ]
 
 export default function WebhooksPage() {
+  const confirm = useConfirm()
   const [tab, setTab] = useState<Tab>('incoming')
   const [incoming, setIncoming] = useState<IncomingWebhook[]>([])
   const [outgoing, setOutgoing] = useState<OutgoingWebhook[]>([])
@@ -98,7 +100,7 @@ export default function WebhooksPage() {
   }
 
   const handleDeleteIncoming = async (id: string) => {
-    if (!confirm('この受信Webhookを削除しますか？')) return
+    if (!await confirm({ message: 'この受信Webhookを削除しますか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.webhooks.incoming.delete(id)
       load()
@@ -108,7 +110,7 @@ export default function WebhooksPage() {
   }
 
   const handleDeleteOutgoing = async (id: string) => {
-    if (!confirm('この送信Webhookを削除しますか？')) return
+    if (!await confirm({ message: 'この送信Webhookを削除しますか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.webhooks.outgoing.delete(id)
       load()

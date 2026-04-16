@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { ScheduleException } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
+import { useConfirm } from '@/contexts/confirm-context'
 import Header from '@/components/layout/header'
 
 type FormState = {
@@ -24,6 +25,7 @@ function formatDate(dateStr: string): string {
 
 export default function BookingExceptionsPage() {
   const { selectedAccountId } = useAccount()
+  const confirm = useConfirm()
   const [exceptions, setExceptions] = useState<ScheduleException[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -82,7 +84,7 @@ export default function BookingExceptionsPage() {
   }
 
   const handleDelete = async (ex: ScheduleException) => {
-    if (!confirm(`${formatDate(ex.date)} の例外設定を削除しますか？`)) return
+    if (!await confirm({ message: `${formatDate(ex.date)} の例外設定を削除しますか？`, confirmLabel: '削除する', danger: true })) return
     try {
       await api.booking.deleteException(ex.id)
       loadExceptions()

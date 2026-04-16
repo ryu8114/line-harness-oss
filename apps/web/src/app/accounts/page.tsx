@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 interface LineAccountListItem {
@@ -42,6 +43,7 @@ const ccPrompts = [
 ]
 
 export default function AccountsPage() {
+  const confirm = useConfirm()
   const [accounts, setAccounts] = useState<LineAccountListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -78,7 +80,7 @@ export default function AccountsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このLINEアカウントを削除しますか？')) return
+    if (!await confirm({ message: 'このLINEアカウントを削除しますか？', confirmLabel: '削除する', danger: true })) return
     await api.lineAccounts.delete(id)
     load()
   }

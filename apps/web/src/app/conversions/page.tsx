@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import type { ConversionPoint } from '@line-crm/shared'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 interface ConversionReportItem {
@@ -34,6 +35,7 @@ const ccPrompts = [
 ]
 
 export default function ConversionsPage() {
+  const confirm = useConfirm()
   const [points, setPoints] = useState<ConversionPoint[]>([])
   const [report, setReport] = useState<ConversionReportItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,7 +73,7 @@ export default function ConversionsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このCVポイントを削除しますか？')) return
+    if (!await confirm({ message: 'このCVポイントを削除しますか？', confirmLabel: '削除する', danger: true })) return
     await api.conversions.deletePoint(id)
     load()
   }

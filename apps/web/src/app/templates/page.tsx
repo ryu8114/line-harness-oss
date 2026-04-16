@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 interface Template {
@@ -58,6 +59,7 @@ const ccPrompts = [
 ]
 
 export default function TemplatesPage() {
+  const confirm = useConfirm()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -136,7 +138,7 @@ export default function TemplatesPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このテンプレートを削除してもよいですか？')) return
+    if (!await confirm({ message: 'このテンプレートを削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.templates.delete(id)
       load()

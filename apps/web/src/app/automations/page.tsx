@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 type AutomationEventType = "friend_add" | "tag_change" | "score_threshold" | "cv_fire" | "message_received" | "calendar_booked"
@@ -91,6 +92,7 @@ const ccPrompts = [
 ]
 
 export default function AutomationsPage() {
+  const confirm = useConfirm()
   const { selectedAccountId } = useAccount()
   const [automations, setAutomations] = useState<Automation[]>([])
   const [loading, setLoading] = useState(true)
@@ -177,7 +179,7 @@ export default function AutomationsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このオートメーションを削除してもよいですか？')) return
+    if (!await confirm({ message: 'このオートメーションを削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.automations.delete(id)
       loadAutomations()

@@ -1,5 +1,7 @@
+'use client'
 import Link from 'next/link'
 import type { Scenario } from '@line-crm/shared'
+import { useConfirm } from '@/contexts/confirm-context'
 
 type ScenarioWithCount = Scenario & { stepCount?: number }
 
@@ -17,6 +19,7 @@ interface ScenarioListProps {
 }
 
 export default function ScenarioList({ scenarios, onToggleActive, onDelete, loading }: ScenarioListProps) {
+  const confirm = useConfirm()
   if (scenarios.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
@@ -87,8 +90,8 @@ export default function ScenarioList({ scenarios, onToggleActive, onDelete, load
               {scenario.isActive ? '無効にする' : '有効にする'}
             </button>
             <button
-              onClick={() => {
-                if (confirm(`「${scenario.name}」を削除してもよいですか？`)) {
+              onClick={async () => {
+                if (await confirm({ message: `「${scenario.name}」を削除してもよいですか？`, confirmLabel: '削除する', danger: true })) {
                   onDelete(scenario.id)
                 }
               }}

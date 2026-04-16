@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import type { BookingMenu } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
+import { useConfirm } from '@/contexts/confirm-context'
 import Header from '@/components/layout/header'
 
 const DAY_DURATION_OPTIONS = [30, 60, 90, 120]
@@ -19,6 +20,7 @@ const EMPTY_FORM: FormState = { name: '', duration: 60, price: '', description: 
 
 export default function BookingMenusPage() {
   const { selectedAccountId } = useAccount()
+  const confirm = useConfirm()
   const [menus, setMenus] = useState<BookingMenu[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -111,7 +113,7 @@ export default function BookingMenusPage() {
   }
 
   const handleDelete = async (m: BookingMenu) => {
-    if (!confirm(`「${m.name}」を削除しますか？`)) return
+    if (!await confirm({ message: `「${m.name}」を削除しますか？`, confirmLabel: '削除する', danger: true })) return
     try {
       await api.booking.deleteMenu(m.id)
       loadMenus()

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 
 interface Reminder {
@@ -84,6 +85,7 @@ const ccPrompts = [
 ]
 
 export default function RemindersPage() {
+  const confirm = useConfirm()
   const { selectedAccountId } = useAccount()
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [loading, setLoading] = useState(true)
@@ -198,7 +200,7 @@ export default function RemindersPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このリマインダーを削除してもよいですか？')) return
+    if (!await confirm({ message: 'このリマインダーを削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.reminders.delete(id)
       if (expandedId === id) {
@@ -241,7 +243,7 @@ export default function RemindersPage() {
 
   const handleDeleteStep = async (stepId: string) => {
     if (!expandedId) return
-    if (!confirm('このステップを削除してもよいですか？')) return
+    if (!await confirm({ message: 'このステップを削除してもよいですか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.reminders.deleteStep(expandedId, stepId)
       loadDetail(expandedId)

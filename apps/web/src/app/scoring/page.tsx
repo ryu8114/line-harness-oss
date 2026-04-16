@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Header from '@/components/layout/header'
+import { useConfirm } from '@/contexts/confirm-context'
 import { api } from '@/lib/api'
 import CcPromptButton from '@/components/cc-prompt-button'
 
@@ -41,6 +42,7 @@ const ccPrompts = [
 ]
 
 export default function ScoringPage() {
+  const confirm = useConfirm()
   const [rules, setRules] = useState<ScoringRule[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -119,7 +121,7 @@ export default function ScoringPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このスコアリングルールを削除しますか？')) return
+    if (!await confirm({ message: 'このスコアリングルールを削除しますか？', confirmLabel: '削除する', danger: true })) return
     try {
       await api.scoring.deleteRule(id)
       loadRules()
