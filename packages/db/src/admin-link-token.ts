@@ -9,7 +9,7 @@ export interface AdminLinkToken {
   created_at: string;
 }
 
-/** ワンタイムリンクトークンを生成する（有効期限 1 時間）*/
+/** ワンタイムリンクトークンを生成する（有効期限 24 時間）*/
 export async function createAdminLinkToken(
   db: D1Database,
   lineAccountId: string,
@@ -22,8 +22,8 @@ export async function createAdminLinkToken(
   crypto.getRandomValues(bytes);
   const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  // 1時間後（JST）: toJstString で正しく JST オフセット付きに変換
-  const expiresAt = toJstString(new Date(Date.now() + 60 * 60 * 1000));
+  // 24時間後（JST）: toJstString で正しく JST オフセット付きに変換
+  const expiresAt = toJstString(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
   await db
     .prepare(
