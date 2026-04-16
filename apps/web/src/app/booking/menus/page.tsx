@@ -230,60 +230,45 @@ export default function BookingMenusPage() {
           <p className="text-gray-500 text-sm">メニューがありません。「+ メニュー追加」から追加してください。</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">メニュー名</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">時間</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">料金</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">状態</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {menus.map((m) => (
-                <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {m.name}
-                    {m.description && <p className="text-xs text-gray-400 mt-0.5 font-normal">{m.description}</p>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{m.duration}分</td>
-                  <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                    {m.price !== null ? `¥${m.price.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1.5 text-xs ${m.isActive ? 'text-green-700' : 'text-gray-400'}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${m.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                      {m.isActive ? '有効' : '無効'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(m)}
-                        className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => handleToggleActive(m)}
-                        className="px-2.5 py-1 text-xs font-medium text-blue-600 bg-white border border-blue-200 rounded hover:bg-blue-50"
-                      >
-                        {m.isActive ? '無効化' : '有効化'}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(m)}
-                        className="px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded hover:bg-red-50"
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {menus.map((m) => (
+            <div key={m.id} className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-4 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center gap-1.5 text-xs ${m.isActive ? 'text-green-700' : 'text-gray-400'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    {m.isActive ? '有効' : '無効'}
+                  </span>
+                  <span className="font-medium text-gray-900 text-sm">{m.name}</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {m.duration}分
+                  {m.price !== null && <span className="ml-2">¥{m.price.toLocaleString()}</span>}
+                </p>
+                {m.description && <p className="mt-0.5 text-xs text-gray-400">{m.description}</p>}
+              </div>
+              <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => openEdit(m)}
+                  className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 whitespace-nowrap"
+                >
+                  編集
+                </button>
+                <button
+                  onClick={() => handleToggleActive(m)}
+                  className="px-2.5 py-1 text-xs font-medium text-blue-600 bg-white border border-blue-200 rounded hover:bg-blue-50 whitespace-nowrap"
+                >
+                  {m.isActive ? '無効化' : '有効化'}
+                </button>
+                <button
+                  onClick={() => handleDelete(m)}
+                  className="px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 whitespace-nowrap"
+                >
+                  削除
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

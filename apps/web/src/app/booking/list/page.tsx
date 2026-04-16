@@ -51,8 +51,9 @@ export default function BookingListPage() {
   const [error, setError] = useState('')
 
   const today = toLocalDate(new Date())
+  const oneMonthLater = (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return toLocalDate(d) })()
   const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
+  const [to, setTo] = useState(oneMonthLater)
   const [statusFilter, setStatusFilter] = useState('')
 
   const [selected, setSelected] = useState<Booking | null>(null)

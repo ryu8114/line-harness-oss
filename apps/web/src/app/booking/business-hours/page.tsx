@@ -127,37 +127,41 @@ export default function BusinessHoursPage() {
                 </div>
 
                 {days[i].isOpen ? (
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-                    <span className="text-xs text-gray-400">営業</span>
-                    <input
-                      type="time"
-                      value={days[i].openTime}
-                      onChange={(e) => update(i, { openTime: e.target.value })}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                    <span>〜</span>
-                    <input
-                      type="time"
-                      value={days[i].closeTime}
-                      onChange={(e) => update(i, { closeTime: e.target.value })}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                    <span className="text-xs text-gray-400 ml-2">休憩</span>
-                    <input
-                      type="time"
-                      value={days[i].breakStart}
-                      onChange={(e) => update(i, { breakStart: e.target.value })}
-                      placeholder="--:--"
-                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-24"
-                    />
-                    <span>〜</span>
-                    <input
-                      type="time"
-                      value={days[i].breakEnd}
-                      onChange={(e) => update(i, { breakEnd: e.target.value })}
-                      placeholder="--:--"
-                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-24"
-                    />
+                  <div className="flex flex-col gap-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-8 shrink-0">営業</span>
+                      <input
+                        type="time"
+                        value={days[i].openTime}
+                        onChange={(e) => update(i, { openTime: e.target.value })}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                      <span className="text-gray-400">〜</span>
+                      <input
+                        type="time"
+                        value={days[i].closeTime}
+                        onChange={(e) => update(i, { closeTime: e.target.value })}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-8 shrink-0">休憩</span>
+                      <input
+                        type="time"
+                        value={days[i].breakStart}
+                        onChange={(e) => update(i, { breakStart: e.target.value })}
+                        placeholder="--:--"
+                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-24"
+                      />
+                      <span className="text-gray-400">〜</span>
+                      <input
+                        type="time"
+                        value={days[i].breakEnd}
+                        onChange={(e) => update(i, { breakEnd: e.target.value })}
+                        placeholder="--:--"
+                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-24"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <span className="text-sm text-gray-400">定休日</span>
