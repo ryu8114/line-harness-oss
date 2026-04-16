@@ -248,44 +248,77 @@ export default function BookingListPage() {
           <p className="text-gray-500 text-sm">この期間の予約はありません</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">日時</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">お名前</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">メニュー</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ステータス</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">詳細</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {bookings.map((b) => (
-                <tr key={b.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-gray-900 whitespace-nowrap">{formatDatetime(b.startAt)}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{b.customerName ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">
-                    {b.menuName ?? '—'}
-                    {b.menuDuration ? ` (${b.menuDuration}分)` : ''}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusBadgeClass(b.status)}`}>
-                      {statusLabel(b.status)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setSelected(b)}
-                      className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
-                    >
-                      詳細
-                    </button>
-                  </td>
+        <>
+          {/* モバイル: カード形式 */}
+          <div className="sm:hidden space-y-2">
+            {bookings.map((b) => (
+              <div key={b.id} className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-gray-500 whitespace-nowrap">{formatDatetime(b.startAt)}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium shrink-0 ${statusBadgeClass(b.status)}`}>
+                    {statusLabel(b.status)}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-end justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{b.customerName ?? '—'}</p>
+                    {b.menuName && (
+                      <p className="text-xs text-gray-400 mt-0.5 truncate">
+                        {b.menuName}{b.menuDuration ? ` (${b.menuDuration}分)` : ''}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setSelected(b)}
+                    className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 shrink-0"
+                  >
+                    詳細 →
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* PC: テーブル形式 */}
+          <div className="hidden sm:block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">日時</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">お名前</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">メニュー</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ステータス</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">詳細</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {bookings.map((b) => (
+                  <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-gray-900 whitespace-nowrap">{formatDatetime(b.startAt)}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{b.customerName ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {b.menuName ?? '—'}
+                      {b.menuDuration ? ` (${b.menuDuration}分)` : ''}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusBadgeClass(b.status)}`}>
+                        {statusLabel(b.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => setSelected(b)}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                      >
+                        詳細
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   )
