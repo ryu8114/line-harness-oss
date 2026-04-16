@@ -114,16 +114,16 @@ export default function BusinessHoursPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="divide-y divide-gray-100">
             {DAYS.map((dayLabel, i) => (
-              <div key={i} className="px-4 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div key={i} className="px-4 py-4 flex items-start gap-3">
                 {/* Day toggle */}
-                <div className="flex items-center gap-3 min-w-[80px]">
+                <div className="flex items-center gap-2 shrink-0 pt-0.5">
                   <button
                     onClick={() => update(i, { isOpen: !days[i].isOpen })}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${days[i].isOpen ? 'bg-green-500' : 'bg-gray-200'}`}
                   >
                     <span className={`inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform ${days[i].isOpen ? 'translate-x-4' : 'translate-x-0'}`} />
                   </button>
-                  <span className="text-sm font-medium text-gray-700 w-6">{dayLabel}曜</span>
+                  <span className="text-sm font-medium text-gray-700 w-8 shrink-0">{dayLabel}曜</span>
                 </div>
 
                 {days[i].isOpen ? (
@@ -151,7 +151,7 @@ export default function BusinessHoursPage() {
                         value={days[i].breakStart}
                         onChange={(e) => update(i, { breakStart: e.target.value })}
                         placeholder="--:--"
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-24"
+                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
                       <span className="text-gray-400">〜</span>
                       <input
@@ -159,12 +159,12 @@ export default function BusinessHoursPage() {
                         value={days[i].breakEnd}
                         onChange={(e) => update(i, { breakEnd: e.target.value })}
                         placeholder="--:--"
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-24"
+                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
                     </div>
                   </div>
                 ) : (
-                  <span className="text-sm text-gray-400">定休日</span>
+                  <span className="text-sm text-gray-400 pt-0.5">定休日</span>
                 )}
               </div>
             ))}
