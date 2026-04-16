@@ -234,13 +234,7 @@ export default function BookingMenusPage() {
           {menus.map((m) => (
             <div key={m.id} className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-4 flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`inline-flex items-center gap-1.5 text-xs ${m.isActive ? 'text-green-700' : 'text-gray-400'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    {m.isActive ? '有効' : '無効'}
-                  </span>
-                  <span className="font-medium text-gray-900 text-sm">{m.name}</span>
-                </div>
+                <span className="font-medium text-gray-900 text-sm">{m.name}</span>
                 <p className="mt-1 text-xs text-gray-500">
                   {m.duration}分
                   {m.price !== null && <span className="ml-2">¥{m.price.toLocaleString()}</span>}
@@ -253,12 +247,6 @@ export default function BookingMenusPage() {
                   className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 whitespace-nowrap"
                 >
                   編集
-                </button>
-                <button
-                  onClick={() => handleToggleActive(m)}
-                  className="px-2.5 py-1 text-xs font-medium text-blue-600 bg-white border border-blue-200 rounded hover:bg-blue-50 whitespace-nowrap"
-                >
-                  {m.isActive ? '無効化' : '有効化'}
                 </button>
                 <button
                   onClick={() => handleDelete(m)}

@@ -132,7 +132,7 @@ export default function BookingListPage() {
                   disabled={updatingStatus}
                   className="border border-gray-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
                 >
-                  {STATUS_OPTIONS.filter((o) => o.value).map((o) => (
+                  {STATUS_OPTIONS.filter((o) => o.value && o.value !== 'completed' && o.value !== 'no_show').map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
